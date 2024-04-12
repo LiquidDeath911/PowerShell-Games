@@ -2,6 +2,13 @@ Clear-Host
  
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+
+# Enter a path that both players will have modify access to
+$networkPath = ""
+
+if ( $networkPath.Length -eq 0 ) {
+    Write-Warning "You must edit this script and add a network path on line 7"
+}
  
 function Set-AutoSize {
     [ CmdletBinding( SupportsShouldProcess )]
@@ -2197,7 +2204,7 @@ $gameMaster = [PSCustomObject]@{
     start = $false
     end = $false
     lives = 17
-    networkPath = "T:\Jacobo\_PSGames\Battleship\_Games\Games"
+    networkPath = $networkPath
     infoLabel = [System.Windows.Forms.Label]::new()
     infoLabel2 = [System.Windows.Forms.Label]::new()
     refreshTimer = [System.Timers.Timer]::new()
