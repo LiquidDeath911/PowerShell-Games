@@ -8,6 +8,7 @@ $networkPath = ""
 
 if ( $networkPath.Length -eq 0 ) {
     Write-Warning "You must edit this script and add a network path on line 7"
+    return
 }
  
 function Set-AutoSize {
