@@ -1571,41 +1571,7 @@ function Set-Win {
  
     Set-Grid -GameMaster $GameMaster
     $GameMaster.infoLabel.Text = "Congrats! You win!"
- 
-    $playerHitCount = 0
-    foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
-        $playerHitCount++
-    }
- 
-    $playerMissCount = 0
-    foreach ( $property in $GameMaster.playerMisses.PSObject.Properties ) {
-        $playerMissCount++
-    }
- 
-    $opponentHitCount = 0
-    foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
-        $opponentHitCount++
-    }
- 
-    $opponentMissCount = 0
-    foreach ( $property in $GameMaster.opponentMisses.PSObject.Properties ) {
-        $opponentMissCount++
-    }
- 
-    $scoreObject = [PSCustomObject]@{
-        TotalGames = 1; Wins = 1; Losses = 0; TotalHits = 0; TotalMisses = 0; AvgHitsPerGame = 0; AvgMissesPerGame = 0
-    }
- 
-    if ( $env:USERNAME -eq $GameMaster.playerName ) {
-        $scoreObject.TotalHits = $playerHitCount
-        $scoreObject.TotalMisses = $playerMissCount
-    } else {
-        $scoreObject.TotalHits = $opponentHitCount
-        $scoreObject.TotalMisses = $opponentMissCount
-    }
- 
-    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -Battleship -User $env:USERNAME -Score $scoreObject
- 
+    
     Close-Game -GameMaster $GameMaster
  
     return
@@ -1620,40 +1586,6 @@ function Set-Lose {
     Set-Grid -GameMaster $GameMaster
     Send-Game -GameMaster $GameMaster
     $GameMaster.infoLabel.Text = "You have lost. Better luck next time."
- 
-    $playerHitCount = 0
-    foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
-        $playerHitCount++
-    }
- 
-    $playerMissCount = 0
-    foreach ( $property in $GameMaster.playerMisses.PSObject.Properties ) {
-        $playerMissCount++
-    }
- 
-    $opponentHitCount = 0
-    foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
-        $opponentHitCount++
-    }
- 
-    $opponentMissCount = 0
-    foreach ( $property in $GameMaster.opponentMisses.PSObject.Properties ) {
-        $opponentMissCount++
-    }
- 
-    $scoreObject = [PSCustomObject]@{
-        TotalGames = 1; Wins = 0; Losses = 1; TotalHits = 0; TotalMisses = 0; AvgHitsPerGame = 0; AvgMissesPerGame = 0
-    }
- 
-    if ( $env:USERNAME -eq $GameMaster.playerName ) {
-        $scoreObject.TotalHits = $playerHitCount
-        $scoreObject.TotalMisses = $playerMissCount
-    } else {
-        $scoreObject.TotalHits = $opponentHitCount
-        $scoreObject.TotalMisses = $opponentMissCount
-    }
- 
-    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -Battleship -User $env:USERNAME -Score $scoreObject
  
     Close-Game -GameMaster $GameMaster
  
