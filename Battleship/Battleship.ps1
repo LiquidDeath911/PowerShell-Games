@@ -1,13 +1,13 @@
-Clear-Host
+﻿Clear-Host
  
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Enter a path that both players will have modify access to
+# Both players must have Modify access to this path
 $networkPath = ""
 
 if ( $networkPath.Length -eq 0 ) {
-    Write-Warning "You must edit this script and add a network path on line 7"
+    Write-Warning "You must edit the script and add a path to the variable on line 7"
     return
 }
  
@@ -190,7 +190,7 @@ function New-MouseEnter {
                 New-PhaseOneMouseEnter -GameMaster $GameMaster -Grid 2 -Column $column -Row $row
             } elseif (( $env:USERNAME -eq $GameMaster.opponentName ) -and ( $grid -eq "1" )) {
                 New-PhaseOneMouseEnter -GameMaster $GameMaster -Grid 1 -Column $column -Row $row
-           }
+            }
         }
     }
  
@@ -276,7 +276,7 @@ function New-MouseClick {
         1 {
             if (( $env:USERNAME -eq $GameMaster.playerName ) -and ( $grid -eq "2" )) {
                 if ( $Left ) {
-                   New-PhaseOneMouseClick -GameMaster $GameMaster -Grid 2 -Column $column -Row $row
+                    New-PhaseOneMouseClick -GameMaster $GameMaster -Grid 2 -Column $column -Row $row
                 } elseif ( $Right ) {
                     New-PhaseOneMouseClickRight -GameMaster $GameMaster -Grid 2 -Column $column -Row $row
                 }
@@ -414,7 +414,7 @@ function New-PhaseZeroMouseLeave {
             if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column + $number )_$( $row )".BackColor -eq $GameMaster.colors.selected ) {
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column + $number )_$( $row )".BackColor = $GameMaster.colors.water
             }
-       }
+        }
         foreach ( $number in 0..3 ) {
             if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column )_$( $row + $number )".BackColor -eq $GameMaster.colors.selected ) {
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column )_$( $row + $number )".BackColor = $GameMaster.colors.water
@@ -703,7 +703,7 @@ function New-PhaseOneMouseLeave {
     }
  
     if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column )_$( $row )".BackColor -eq $GameMaster.colors.selected ) {
-       $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column )_$( $row )".BackColor = $GameMaster.colors.water
+        $GameMaster."grid$( $Grid )"."$( $Grid )_$( $column )_$( $row )".BackColor = $GameMaster.colors.water
     }
  
     return
@@ -713,7 +713,7 @@ function New-PhaseOneEnterKey {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
         [PSCustomObject]$GameMaster
-   )
+    )
  
     if ( -not $GameMaster.start ) {
         Out-Message -Type "Notice" -Message "No game currently running"
@@ -741,7 +741,7 @@ function New-PhaseOneEnterKey {
         } else {
             Out-Message -Type "Notice" -Message "Place all 3 shots before sending"
         }
-    } else {
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
         $playerCount = 0
         foreach ( $property in $GameMaster.playerShots.PSObject.Properties ) {
             $playerCount++
@@ -760,8 +760,6 @@ function New-PhaseOneEnterKey {
             Out-Message -Type "Notice" -Message "Place all 3 shots before sending"
         }
     }
- 
-    # Ready to send game
  
     return
 }
@@ -803,49 +801,33 @@ function New-PhaseOneMouseClick {
         foreach ( $property in $GameMaster.playerShots.PSObject.Properties ) {
             $playerCount++
         }
-        #Write-Host "1playerCount = $( $playerCount )"
  
         $opponentCount = 0
         foreach ( $property in $GameMaster.opponentShots.PSObject.Properties ) {
             $opponentCount++
         }
-        #Write-Host "1opponentCount = $( $opponentCount )"
  
         if ( $playerCount -lt ( $GameMaster.shotAmount + $opponentCount )) {
             if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor -eq $GameMaster.colors.selected ) {
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor = $GameMaster.colors.shot
                 $GameMaster.playerShots | Add-Member -MemberType NoteProperty -Name "$( $playerCount )" -Value $( [PSCustomObject]@{ column = $Column; row = $Row; checked = $false } )
-                #foreach ( $number in 0..$playerCount ) {
-                #    if ( -not $GameMaster.playerShots."$( $number )" ) {
-                #        $GameMaster.playerShots | Add-Member -MemberType NoteProperty -Name "$( $number )" -Value $( [PSCustomObject]@{ column = $Column; row = $Row; checked = $false } )
-                #        break
-                #    }
-                #}
             }
         }
-    } else {
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
         $playerCount = 0
         foreach ( $property in $GameMaster.playerShots.PSObject.Properties ) {
             $playerCount++
         }
-        #Write-Host "2playerCount = $( $playerCount )"
  
         $opponentCount = 0
         foreach ( $property in $GameMaster.opponentShots.PSObject.Properties ) {
             $opponentCount++
         }
-        #Write-Host "2opponentCount = $( $opponentCount )"
  
         if ( $opponentCount -lt $playerCount ) {
             if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor -eq $GameMaster.colors.selected ) {
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor = $GameMaster.colors.shot
                 $GameMaster.opponentShots | Add-Member -MemberType NoteProperty -Name "$( $opponentCount )" -Value $( [PSCustomObject]@{ column = $Column; row = $Row; checked = $false } )
-                #foreach ( $number in 0..$opponentCount ) {
-                #    if ( -not $GameMaster.opponentShots."$( $number )" ) {
-                #        $GameMaster.opponentShots | Add-Member -MemberType NoteProperty -Name "$( $number )" -Value $( [PSCustomObject]@{ column = $Column; row = $Row; checked = $false } )
-                #        break
-                #    }
-                #}
             }
         }
     }
@@ -875,41 +857,20 @@ function New-PhaseOneMouseClickRight {
         }
  
         if ( $playerCount -gt 0 ) {
-            #if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor -eq $GameMaster.colors.shot ) {
                 $playerCount--
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $GameMaster.playerShots."$( $playerCount )".column )_$( $GameMaster.playerShots."$( $playerCount )".row )".BackColor = $GameMaster.colors.water
                 $GameMaster.playerShots.psobject.properties.remove( "$( $playerCount )" )
-                #foreach ( $property in $GameMaster.playerShots.PSObject.Properties ) {
-                #    if (  $GameMaster.playerShots."$( $property.Name )".column -eq $Column ) {
-                #        if (  $GameMaster.playerShots."$( $property.Name )".row -eq $Row ) {
-                #            $GameMaster.playerShots.psobject.properties.remove( "$( $property.Name )" )
-                #            break
-                #        }
-                #    }
-                #}
- 
-            #}
         }
-   } else {
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
         $opponentCount = 0
         foreach ( $property in $GameMaster.opponentShots.PSObject.Properties ) {
             $opponentCount++
         }
  
         if ( $opponentCount -gt 0 ) {
-            #if ( $GameMaster."grid$( $Grid )"."$( $Grid )_$( $Column )_$( $Row )".BackColor -eq $GameMaster.colors.shot ) {
                 $opponentCount--
                 $GameMaster."grid$( $Grid )"."$( $Grid )_$( $GameMaster.opponentShots."$( $opponentCount )".column )_$( $GameMaster.opponentShots."$( $opponentCount )".row )".BackColor = $GameMaster.colors.water
                 $GameMaster.opponentShots.psobject.properties.remove( "$( $opponentCount )" )
-                #foreach ( $property in $GameMaster.opponentShots.PSObject.Properties ) {
-                #    if (  $GameMaster.opponentShots."$( $property.Name )".column -eq $Column ) {
-                #        if (  $GameMaster.opponentShots."$( $property.Name )".row -eq $Row ) {
-                #            $GameMaster.opponentShots.psobject.properties.remove( "$( $property.Name )" )
-                #            break
-                #        }
-                #    }
-                #}
-            #}
         }
     }
  
@@ -1080,7 +1041,7 @@ function Set-Ships {
                     }
                 }
             }
-       }
+        }
  
         if ( $GameMaster.ship2.placed ) {
             foreach ( $number in 0..3 ) {
@@ -1106,7 +1067,7 @@ function Set-Ships {
                     }
                 }
             }
-       }
+        }
  
         if ( $GameMaster.ship3.placed ) {
             foreach ( $number in 0..2 ) {
@@ -1158,7 +1119,7 @@ function Set-Ships {
                     }
                 }
             }
-        }
+       }
  
         if ( $GameMaster.ship5.placed ) {
             foreach ( $number in 0..1 ) {
@@ -1247,7 +1208,7 @@ function Confirm-ShipSqaure {
  
     switch ( $Ship ) {
         1 { $range = 4 }
-        2 { $range = 3 }
+       2 { $range = 3 }
         3 { $range = 2 }
         4 { $range = 2 }
         5 { $range = 1 }
@@ -1290,7 +1251,6 @@ function Get-Turn {
                     }
                     if ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 1 -Column $( $inputObject.opponentShots."$( $property.Name )".column ) -Row $( $inputObject.opponentShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.opponentHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship1.hits++
                             $GameMaster.opponentHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.opponentHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.opponentShots."$( $property.Name )".column )
@@ -1301,7 +1261,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 2 -Column $( $inputObject.opponentShots."$( $property.Name )".column ) -Row $( $inputObject.opponentShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.opponentHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship2.hits++
                             $GameMaster.opponentHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.opponentHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.opponentShots."$( $property.Name )".column )
@@ -1312,7 +1271,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 3 -Column $( $inputObject.opponentShots."$( $property.Name )".column ) -Row $( $inputObject.opponentShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.opponentHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship3.hits++
                             $GameMaster.opponentHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.opponentHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.opponentShots."$( $property.Name )".column )
@@ -1323,7 +1281,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 4 -Column $( $inputObject.opponentShots."$( $property.Name )".column ) -Row $( $inputObject.opponentShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.opponentHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship4.hits++
                             $GameMaster.opponentHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.opponentHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.opponentShots."$( $property.Name )".column )
@@ -1334,7 +1291,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 5 -Column $( $inputObject.opponentShots."$( $property.Name )".column ) -Row $( $inputObject.opponentShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.opponentHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship5.hits++
                             $GameMaster.opponentHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.opponentHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.opponentShots."$( $property.Name )".column )
@@ -1388,16 +1344,21 @@ function Get-Turn {
                 }
             }
  
-            $hitCount = 0
+            $playerHitCount = 0
             foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
-                $hitCount++
+                $playerHitCount++
             }
  
-            if ( $GameMaster.lives -le 0 ) {
-                Set-Lose -GameMaster $GameMaster
-                return
-            } elseif ( $hitCount -ge 17 ) {
+            $opponentHitCount = 0
+            foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
+                $opponentHitCount++
+            }
+ 
+            if ( $playerHitCount -ge $GameMaster.lives ) {
                 Set-Win -GameMaster $GameMaster
+                return
+            } elseif ( $opponentHitCount -ge $GameMaster.lives ) {
+                Set-Lose -GameMaster $GameMaster
                 return
             }
  
@@ -1409,6 +1370,8 @@ function Get-Turn {
                 1 { $GameMaster.infoLabel2.Text = "Click: Place shot;  Right Click: Remove last shot;  Enter: Send shots;" }
             }
  
+            New-Notification
+ 
         } elseif ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.opponentName ).clixml" ) {
             $GameMaster.infoLabel.Text = "Opponent's Turn"
             $GameMaster.refreshTimer.Enabled = $true
@@ -1417,7 +1380,7 @@ function Get-Turn {
         } else {
             Out-Message -Type "Error" -Message "Failed to find necessary files"
         }
-    } else {
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
         if ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.opponentName ).clixml" ) {
             $inputObject = Import-Clixml -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.opponentName ).clixml"
  
@@ -1425,7 +1388,7 @@ function Get-Turn {
                 if ( -not $inputObject.playerShots."$( $property.Name )".checked ) {
                     if ( -not $GameMaster.playerShots."$( $property.Name )" ) {
                         $GameMaster.playerShots | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
-                       $GameMaster.playerShots."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
+                        $GameMaster.playerShots."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
                         $GameMaster.playerShots."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "row" -Value $( $inputObject.playerShots."$( $property.Name )".row )
                         $GameMaster.playerShots."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "checked" -Value $( $inputObject.playerShots."$( $property.Name )".checked )
                     } else {
@@ -1433,7 +1396,6 @@ function Get-Turn {
                     }
                     if ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 1 -Column $( $inputObject.playerShots."$( $property.Name )".column ) -Row $( $inputObject.playerShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.playerHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship1.hits++
                             $GameMaster.playerHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
@@ -1444,7 +1406,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 2 -Column $( $inputObject.playerShots."$( $property.Name )".column ) -Row $( $inputObject.playerShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.playerHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship2.hits++
                             $GameMaster.playerHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
@@ -1455,18 +1416,16 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 3 -Column $( $inputObject.playerShots."$( $property.Name )".column ) -Row $( $inputObject.playerShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.playerHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship3.hits++
                             $GameMaster.playerHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
-                           $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "row" -Value $( $inputObject.playerShots."$( $property.Name )".row )
+                            $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "row" -Value $( $inputObject.playerShots."$( $property.Name )".row )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "checked" -Value $( $inputObject.playerShots."$( $property.Name )".checked )
                         } else {
                             $GameMaster.playerHits."$( $property.Name )".checked = $true
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 4 -Column $( $inputObject.playerShots."$( $property.Name )".column ) -Row $( $inputObject.playerShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.playerHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship4.hits++
                             $GameMaster.playerHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
@@ -1477,7 +1436,6 @@ function Get-Turn {
                         }
                     } elseif ( Confirm-ShipSqaure -GameMaster $GameMaster -Ship 5 -Column $( $inputObject.playerShots."$( $property.Name )".column ) -Row $( $inputObject.playerShots."$( $property.Name )".row )) {
                         if ( -not $GameMaster.playerHits."$( $property.Name )" ) {
-                            $GameMaster.lives--
                             $GameMaster.ship5.hits++
                             $GameMaster.playerHits | Add-Member -MemberType NoteProperty -Name "$( $property.Name )" -Value $( [PSCustomObject]@{} )
                             $GameMaster.playerHits."$( $property.Name )" | Add-Member -MemberType NoteProperty -Name "column" -Value $( $inputObject.playerShots."$( $property.Name )".column )
@@ -1531,13 +1489,21 @@ function Get-Turn {
                 }
             }
  
+            $playerHitCount = 0
+            foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
+                $playerHitCount++
+            }
  
+            $opponentHitCount = 0
+            foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
+                $opponentHitCount++
+            }
  
-            if ( $GameMaster.lives -le 0 ) {
-                Set-Lose -GameMaster $GameMaster
+            if ( $opponentHitCount -ge $GameMaster.lives ) {
+               Set-Win -GameMaster $GameMaster
                 return
-            } elseif ( $hitCount -ge 17 ) {
-                Set-Win -GameMaster $GameMaster
+            } elseif ( $playerHitCount -ge $GameMaster.lives ) {
+                Set-Lose -GameMaster $GameMaster
                 return
             }
  
@@ -1548,6 +1514,8 @@ function Get-Turn {
                 0 { $GameMaster.infoLabel2.Text = "Click: Place ship;  Right Click: Rotate ship;" }
                 1 { $GameMaster.infoLabel2.Text = "Click: Place shot;  Right Click: Remove last shot;  Enter: Send shots;" }
             }
+ 
+            New-Notification
  
         } elseif ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.playerName ).clixml" ) {
             $GameMaster.infoLabel.Text = "Opponent's Turn"
@@ -1570,8 +1538,49 @@ function Set-Win {
     )
  
     Set-Grid -GameMaster $GameMaster
+ 
     $GameMaster.infoLabel.Text = "Congrats! You win!"
-    
+    $GameMaster.refreshTimer.Enabled = $false
+    $GameMaster.end = $true
+ 
+    $playerHitCount = 0
+    foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
+        $playerHitCount++
+    }
+ 
+    $playerMissCount = 0
+    foreach ( $property in $GameMaster.playerMisses.PSObject.Properties ) {
+        $playerMissCount++
+    }
+ 
+    $opponentHitCount = 0
+    foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
+        $opponentHitCount++
+    }
+ 
+    $opponentMissCount = 0
+    foreach ( $property in $GameMaster.opponentMisses.PSObject.Properties ) {
+        $opponentMissCount++
+    }
+ 
+    if ( $env:USERNAME -eq $GameMaster.playerName ) {
+        $scoreObject = [PSCustomObject]@{
+            "Result of game" = "Win"
+            "Your Total Hits" = $playerHitCount; "Your Total Misses" = $playerMissCount;
+            "Opponent Total Hits" = $opponentHitCount; "Opponent Total Misses" = $opponentMissCount
+        }
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
+        $scoreObject = [PSCustomObject]@{
+            "Result of game" = "Win"
+            "Your Total Hits" = $opponentHitCount; "Your Total Misses" = $opponentMissCount;
+            "Opponent Total Hits" = $playerHitCount; "Opponent Total Misses" = $playerMissCount
+        }
+    }
+
+    foreach ( $property in $scoreObject.PSObject.Properties ) {
+        Write-Host "$( $property.Name ) = $( $property.Value )"
+    }
+ 
     Close-Game -GameMaster $GameMaster
  
     return
@@ -1585,7 +1594,48 @@ function Set-Lose {
  
     Set-Grid -GameMaster $GameMaster
     Send-Game -GameMaster $GameMaster
+ 
     $GameMaster.infoLabel.Text = "You have lost. Better luck next time."
+    $GameMaster.refreshTimer.Enabled = $false
+    $GameMaster.end = $true
+ 
+    $playerHitCount = 0
+    foreach ( $property in $GameMaster.playerHits.PSObject.Properties ) {
+        $playerHitCount++
+    }
+ 
+    $playerMissCount = 0
+    foreach ( $property in $GameMaster.playerMisses.PSObject.Properties ) {
+        $playerMissCount++
+    }
+ 
+    $opponentHitCount = 0
+    foreach ( $property in $GameMaster.opponentHits.PSObject.Properties ) {
+        $opponentHitCount++
+    }
+ 
+    $opponentMissCount = 0
+    foreach ( $property in $GameMaster.opponentMisses.PSObject.Properties ) {
+        $opponentMissCount++
+    }
+ 
+    if ( $env:USERNAME -eq $GameMaster.playerName ) {
+        $scoreObject = [PSCustomObject]@{
+            "Result of game" = "Lose"
+            "Your Total Hits" = $playerHitCount; "Your Total Misses" = $playerMissCount;
+            "Opponent Total Hits" = $opponentHitCount; "Opponent Total Misses" = $opponentMissCount
+        }
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
+        $scoreObject = [PSCustomObject]@{
+            "Result of game" = "Lose"
+            "Your Total Hits" = $opponentHitCount; "Your Total Misses" = $opponentMissCount;
+            "Opponent Total Hits" = $playerHitCount; "Opponent Total Misses" = $playerMissCount
+        }
+    }
+
+    foreach ( $property in $scoreObject.PSObject.Properties ) {
+        Write-Host "$( $property.Name ) = $( $property.Value )"
+    }
  
     Close-Game -GameMaster $GameMaster
  
@@ -1933,7 +1983,7 @@ function Open-Game {
             Out-Message -Type "Error" -Message "Code must be 4 characters long and only consist of alphanumeric characters"
             continue
         }
-       if ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )" ) {
+        if ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )" ) {
             if ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\$( $env:USERNAME ).clixml" ) {
                 try {
                     $inputObject = Import-Clixml -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\$( $env:USERNAME ).clixml" -ErrorAction Stop
@@ -2040,7 +2090,7 @@ function Send-Game {
             $count++
             if ( $count -ge 25 ) {
                 break
-           }
+            }
             try {
                 Remove-Item -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.playerName ).clixml" -Force -ErrorAction Stop
             } catch {
@@ -2053,7 +2103,7 @@ function Send-Game {
             $GameMaster.playerShots.psobject.properties.remove( "$( $property.Name )" )
         }
  
-    } else {
+    } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
         $saveObject | Export-Clixml -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\$( $GameMaster.opponentName ).clixml" -Force
         $sendObject | Export-Clixml -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\To$( $GameMaster.playerName ).clixml" -Force
         $count = 0
@@ -2102,7 +2152,7 @@ function Close-Game {
                 }
             }
  
-        } else {
+        } elseif ( $env:USERNAME -eq $GameMaster.opponentName ) {
             if ( Test-Path -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\$( $GameMaster.opponentName ).clixml" ) {
                 Remove-Item -Path "$( $GameMaster.networkPath )\$( $GameMaster.gameID )\$( $GameMaster.opponentName ).clixml" -Force
             }
@@ -2118,6 +2168,18 @@ function Close-Game {
     }
  
     return
+}
+ 
+function New-Notification {
+    $notification = [System.Windows.Forms.NotifyIcon]::new()
+ 
+    $path = (Get-Process -id $pid).Path
+    $notification.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+    $notification.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+    $notification.BalloonTipText = "It is your turn in Battleship"
+    $notification.BalloonTipTitle = "Battleship"
+    $notification.Visible = $true
+    $notification.ShowBalloonTip(3000)
 }
  
 $gameMaster = [PSCustomObject]@{
@@ -2365,7 +2427,7 @@ foreach ( $letter in 65..74 ) {
     }
  
     $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-   $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).Font = [System.Drawing.Font]::new( "Verdana", 14 )
+    $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).Font = [System.Drawing.Font]::new( "Verdana", 14 )
     $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).Text = "$( [char]$letter )"
     $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).Size = [System.Drawing.Size]::new( 50, 50 )
     $(Get-Variable -Name "playerLabelLetter$( [char]$letter )" -ValueOnly).Padding = [System.Windows.Forms.Padding]::new( 0 )

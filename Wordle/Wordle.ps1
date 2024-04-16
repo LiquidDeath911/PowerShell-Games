@@ -1,4 +1,4 @@
-Clear-Host
+﻿Clear-Host
  
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -187,7 +187,18 @@ Function KeyboardColor {
     return
 } # End KeyboardColor Function
  
-Function NewGame {
+function NewGame {
+ 
+    $scoreObject = [PSCustomObject]@{
+        Length3TotalGames = 0; Length3Wins = 0; Length3Losses = 0; Length3GuessesLeftOnWin = 0; Length3AvgGuessesLeftOnWin = 0
+        Length4TotalGames = 0; Length4Wins = 0; Length4Losses = 0; Length4GuessesLeftOnWin = 0; Length4AvgGuessesLeftOnWin = 0
+        Length5TotalGames = 0; Length5Wins = 0; Length5Losses = 0; Length5GuessesLeftOnWin = 0; Length5AvgGuessesLeftOnWin = 0
+        Length6TotalGames = 0; Length6Wins = 0; Length6Losses = 0; Length6GuessesLeftOnWin = 0; Length6AvgGuessesLeftOnWin = 0
+        Length7TotalGames = 0; Length7Wins = 0; Length7Losses = 0; Length7GuessesLeftOnWin = 0; Length7AvgGuessesLeftOnWin = 0
+        Length8TotalGames = 0; Length8Wins = 0; Length8Losses = 0; Length8GuessesLeftOnWin = 0; Length8AvgGuessesLeftOnWin = 0
+        Length9TotalGames = 0; Length9Wins = 0; Length9Losses = 0; Length9GuessesLeftOnWin = 0; Length9AvgGuessesLeftOnWin = 0
+        Length10TotalGames = 0; Length10Wins = 0; Length10Losses = 0; Length10GuessesLeftOnWin = 0; Length10AvgGuessesLeftOnWin = 0
+    }
  
     SuspendLayout
     $visibleCount = 0
@@ -575,13 +586,19 @@ Function Submit {
         $Global:winLabel.Visible = $true
         $Global:waitForNewGame = $true
         $null = $Global:waitForNewGame
+ 
+        $length = [int]$Global:wordLength
+ 
         $Global:guess = -1
+ 
     } elseif ($Global:guess -eq $Global:guessCount) {
         $Global:loseLabel1.Visible = $true
         $Global:loseLabel2.Visible = $true
         $Global:waitForNewGame = $true
         $null = $Global:waitForNewGame
+ 
         $Global:guess = 0
+ 
     } else {
         $Global:selectedColumn = 0
         $null = $(Get-Variable -Name "var_$($Global:selectedColumn)_$($Global:guess)" -Scope Global -ValueOnly).Focus()
@@ -589,99 +606,6 @@ Function Submit {
    
     return
 } # End Submit Function
- 
-Function CheatHelp {
- 
-    If ($Global:guess -lt 1) {
-        return
-    }
- 
-    $possibleWords = [System.Collections.ArrayList]::new()
-    $correctFormat = [System.Collections.ArrayList]::new()
-    $corrects = [System.Collections.ArrayList]::new()
-    $partialFormat = [System.Collections.ArrayList]::new()
-    $partials = [System.Collections.ArrayList]::new()
-    $incorrects = [System.Collections.ArrayList]::new()
- 
-    ForEach ($column in 0..($Global:wordLength - 1)) {
-        $null = $correctFormat.Add(".")
-        $null = $partialFormat.Add(".")
-    }
- 
-    foreach ($row in 0..($Global:guessCount - 1)) {
-        foreach ($column in 0..($Global:wordLength - 1)) {
-            $color = $(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).BackColor
-            if ($color -eq $Global:letterCorrect) {
-                $correctFormat[$column] = $(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text
-                $null = $corrects.Add($(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text)
-            } elseif ($color -eq $Global:letterPartial) {
-                If ($partialFormat[$column] -eq ".") {
-                    $partialFormat[$column] = ""
-                }
-                If ($partialFormat[$column] -notmatch $(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text) {
-                    $partialFormat[$column] = "$($partialFormat[$column])$($(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text)"
-                    $null = $partials.Add($(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text)
-                }
-            } elseif ($color -eq $Global:letterIncorrect) {
-                $null = $incorrects.Add($(Get-Variable -Name "var_$($column)_$($row)" -Scope Global -ValueOnly).Text)
-            }
- 
-        }
-    }
- 
-    $compare = ''
- 
-    ForEach ($num in 0..($Global:wordLength - 1)) {
-        If ($correctFormat[$num] -ne ".") {
-            $compare = "$($compare)$($correctFormat[$num])"
-        } Else {
-            If ($partialFormat[$num] -ne ".") {
-                $compare = "$($compare)[^$($partialFormat[$num])]"
-            } Else {
-                $compare = "$($compare)$($partialFormat[$num])"
-            }
-        }
-    }
- 
-    #Write-Host "Compare: $compare"
- 
-    ForEach ($cheatWord in $Global:wordListByLength) {
-        $add = $true
-        If ($cheatWord -match $compare) {
-            ForEach ($letter in $partials) {
-                If ($cheatWord -notmatch $letter) {
-                    $add = $false
-                }
-            }
-            ForEach ($letter in $incorrects) {
-                If ($letter -in $corrects) {
-                    Continue
-                } ElseIf ($letter -in $partials) {
-                    Continue
-                }
-                If ($cheatWord -match $letter) {
-                    $add = $false
-                }
-            }
-            If ($add) {
-                $null = $possibleWords.Add($cheatWord)
-            }
-        }
-    }
- 
-    [System.Windows.Forms.MessageBox]::Show("| $($possibleWords.ForEach({
-        "$($_) | "
-    }))")
- 
-    return
-} # End CheatHelp Function
- 
-Function CheatAnswer {
-   
-    [System.Windows.Forms.MessageBox]::Show($Global:word)
-   
-    return
-} # End CheatAnswer Function
  
 Function AddKeyDown {
    
@@ -725,33 +649,6 @@ Function AddKeyDown {
                 $Global:selectedColumn--
             }
             $null = $(Get-Variable -Name "var_$($Global:selectedColumn)_$($Global:guess)" -Scope Global -ValueOnly).Focus()
-        } elseif ($_.KeyCode -match '.*[0-9]') {
-            $keyCode = $_.KeyCode -replace '[^0-9]',''
-            if (($Global:cheatHelp -eq 0) -and ($keyCode -eq [char]0x0037)) {
-                $Global:cheatHelp = 1
-            } elseif (($Global:cheatHelp -eq 1) -and ($keyCode -eq [char]0x0035)) {
-                $Global:cheatHelp = 2
-            } elseif (($Global:cheatHelp -eq 2) -and ($keyCode -eq [char]0x0038)) {
-                $Global:cheatHelp = 3
-            } elseif (($Global:cheatHelp -eq 3) -and ($keyCode -eq [char]0x0038)) {
-                $Global:cheatHelp = 0
-                CheatHelp
-            } elseif (($Global:cheatAnswer -eq 0) -and ($keyCode -eq [char]0x0030)) {
-                $Global:cheatAnswer = 1
-            } elseif (($Global:cheatAnswer -eq 1) -and ($keyCode -eq [char]0x0039)) {
-                $Global:cheatAnswer = 2
-            } elseif (($Global:cheatAnswer -eq 2) -and ($keyCode -eq [char]0x0031)) {
-                $Global:cheatAnswer = 3
-            } elseif (($Global:cheatAnswer -eq 3) -and ($keyCode -eq [char]0x0031)) {
-                $Global:cheatAnswer = 0
-                CheatAnswer
-            } else {
-                $Global:cheatHelp = 0
-                $Global:cheatAnswer = 0
-            }
-        } else {
-            $Global:cheatHelp = 0
-            $Global:cheatAnswer = 0
         }
     })
     if ($control.Controls.Count -ge 1) {
@@ -788,8 +685,6 @@ Function Setup {
     $Global:keyboardMiddle = "A","S","D","F","G","H","J","K","L"
     $Global:keyboardBottom = "Z","X","C","V","B","N","M"
     $Global:converted = ConvertFromNum $Global:wordLength
-    $Global:cheatHelp = 0
-    $Global:cheatAnswer = 0
     $Global:colorPicker = [System.Windows.Forms.ColorDialog]::new()
  
     ColorSetup
@@ -1067,10 +962,11 @@ $Global:loseLabel2.Font = [System.Drawing.Font]::new("Verdana",14)
  
 $invalidWordTimer = [System.Timers.Timer]::new()
 $invalidWordTimer.AutoReset = $false
-$invalidWordTimer.Enabled = $true
+$invalidWordTimer.Enabled = $false
 $invalidWordTimer.Interval = 1500
 $invalidWordTimer.SynchronizingObject = $Global:form
 $invalidWordTimer.Add_Elapsed({
+    $invalidWordTimer.Enabled = $false
     $Global:invalidWordLabel.Visible = $false
 })
  
@@ -1081,7 +977,7 @@ $Global:invalidWordLabel.BackColor = "white"
 $Global:invalidWordLabel.ForeColor = [System.Drawing.Color]::DarkRed
 $Global:invalidWordLabel.Font = [System.Drawing.Font]::new("Verdana",14)
 $Global:invalidWordLabel.Add_VisibleChanged({
-    $invalidWordTimer.Start()
+    $invalidWordTimer.Enabled = $true
 })
  
 $inputTableLayout = [System.Windows.Forms.TableLayoutPanel]::new()
