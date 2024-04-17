@@ -646,7 +646,19 @@ function New-Notification {
     $notification.BalloonTipText = "It is your turn in TicTacToe"
     $notification.BalloonTipTitle = "TicTacToe"
     $notification.Visible = $true
-    $notification.ShowBalloonTip(3000)
+    $notification.ShowBalloonTip(1500)
+    $notification.Add_BalloonTipClosed({
+        param(
+            $sender, $e
+        )
+        $sender.visible = $false; $sender.Icon.Dispose(); $sender.Icon = $null; $sender.Dispose()
+    })
+    $notification.Add_BalloonTipClicked({
+        param(
+            $sender, $e
+        )
+        $sender.visible = $false; $sender.Icon.Dispose(); $sender.Icon = $null; $sender.Dispose()
+    })
 }
  
 $gameMaster = [PSCustomObject]@{
