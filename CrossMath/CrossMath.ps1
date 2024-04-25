@@ -479,57 +479,7 @@ function Set-Win {
     $GameMaster.infoLabel1.Text = "Congrats! You solved it!"
     $GameMaster.infoLabel2.Text = ""
     $GameMaster.infoLabel3.Text = ""
- 
-    $scoreObject = [PSCustomObject]@{
-        EasyTotalGames = 0; EasyWins = 0; EasyLosses = 0
-        MediumTotalGames = 0; MediumWins = 0; MediumLosses = 0
-        HardTotalGames = 0; HardWins = 0; HardLosses = 0
-    }
- 
-    switch ( $GameMaster.mode ) {
-        1 { $scoreObject.EasyTotalGames = 1; $scoreObject.EasyWins = 1 }
-        2 { $scoreObject.MediumTotalGames = 1; $scoreObject.MediumWins = 1 }
-        3 { $scoreObject.HardTotalGames = 1; $scoreObject.HardWins = 1 }
-    }
- 
-    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -CrossMath -User $env:USERNAME -Score $scoreObject
- 
-    return
-}
- 
-function Set-Lose {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        [PSCustomObject]$GameMaster
-    )
- 
-    $scoreObject = [PSCustomObject]@{
-        EasyTotalGames = 0; EasyWins = 0; EasyLosses = 0
-        MediumTotalGames = 0; MediumWins = 0; MediumLosses = 0
-        HardTotalGames = 0; HardWins = 0; HardLosses = 0
-    }
- 
-    switch ( $GameMaster.mode ) {
-        1 { $scoreObject.EasyTotalGames = 1; $scoreObject.EasyLosses = 1 }
-        2 { $scoreObject.MediumTotalGames = 1; $scoreObject.MediumLosses = 1 }
-        3 { $scoreObject.HardTotalGames = 1; $scoreObject.HardLosses = 1 }
-    }
- 
-    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -CrossMath -User $env:USERNAME -Score $scoreObject
- 
-    return
-}
- 
-function Close-Game {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        [PSCustomObject]$GameMaster
-    )
-   
-    if ( $GameMaster.start ) {
-        Set-Lose -GameMaster $GameMaster
-    }
- 
+    
     return
 }
  
@@ -552,9 +502,6 @@ $gameMaster = [PSCustomObject]@{
  
 $form = [System.Windows.Forms.Form]::new()
 $form.Text = "CrossMath"
-$form.Add_FormClosing({
-    Close-Game -GameMaster $gameMaster
-})
  
 $mainPanel = [System.Windows.Forms.FlowLayoutPanel]::new()
 $mainPanel.Padding = [System.Windows.Forms.Padding]::new( 5, 5, 5, 5 )
