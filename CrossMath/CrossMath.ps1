@@ -106,7 +106,7 @@ function Set-KeyDown {
         } elseif (( $_.KeyCode -eq "D4" ) -or ( $_.KeyCode -eq "NumPad4" )) {
             New-KeyDown -GameMaster $GameMaster -Key 4
         } elseif (( $_.KeyCode -eq "D5" ) -or ( $_.KeyCode -eq "NumPad5" )) {
-            New-KeyDown -GameMaster $GameMaster -Key 5
+           New-KeyDown -GameMaster $GameMaster -Key 5
         } elseif (( $_.KeyCode -eq "D6" ) -or ( $_.KeyCode -eq "NumPad6" )) {
             New-KeyDown -GameMaster $GameMaster -Key 6
         } elseif (( $_.KeyCode -eq "D7" ) -or ( $_.KeyCode -eq "NumPad7" )) {
@@ -260,7 +260,7 @@ function Confirm-Equations {
         $equation = $GameMaster.equations."$( $property.Name )"
         $equationSplit = $equation.Split( "," )
         if ( $GameMaster.userNumbers."$( $equationSplit[0] )" -eq 0 ) {
-           $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.result
+            $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.result
             continue
         } elseif ( $GameMaster.userNumbers."$( $equationSplit[2] )" -eq 0 ) {
             $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.result
@@ -359,6 +359,9 @@ function Confirm-Divide {
                 if ( $secondNumber -gt $firstNumber ) {
                     $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
                     $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
+                } elseif (( $firstNumber % $secondNumber ) -ne 0 ) {
+                    $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
+                    $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
                 }
  
             } elseif ( $column -eq 3 ) {
@@ -377,6 +380,9 @@ function Confirm-Divide {
                 if ( $thirdNumber -gt $runningResult ) {
                     $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
                     $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
+                } elseif (( $runningResult % $thirdNumber ) -ne 0 ) {
+                    $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
+                    $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
                 }
  
             } elseif ( $row -eq 1 ) {
@@ -386,7 +392,11 @@ function Confirm-Divide {
                 if ( $secondNumber -gt $firstNumber ) {
                     $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
                     $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
+                } elseif (( $firstNumber % $secondNumber ) -ne 0 ) {
+                    $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
+                    $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
                 }
+ 
             } elseif ( $row -eq 3 ) {
                 $firstNumber = $GameMaster.numbers."$( $column )_$( [int]$row - 3 )"
                 $secondNumber = $GameMaster.numbers."$( $column )_$( [int]$row - 1 )"
@@ -401,6 +411,9 @@ function Confirm-Divide {
                 }
  
                 if ( $thirdNumber -gt $runningResult ) {
+                    $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
+                    $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
+                } elseif (( $runningResult % $thirdNumber ) -ne 0 ) {
                     $randOperand = Get-Random -Minimum 0 -Maximum $operands.Count
                     $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
                 }
@@ -436,7 +449,7 @@ function New-CrossMath {
         $GameMaster.operands."$( $property.Name )" = $operands[$randOperand]
     }
  
-   foreach ( $property in $GameMaster.numbers.PSObject.Properties ) {
+    foreach ( $property in $GameMaster.numbers.PSObject.Properties ) {
         $randNumber = Get-Random -Minimum 0 -Maximum $numbers.Count
         $GameMaster.numbers."$( $property.Name )" = $numbers[$randNumber]
         $numbers.Remove($numbers[$randNumber])
@@ -467,6 +480,56 @@ function Set-Win {
     $GameMaster.infoLabel2.Text = ""
     $GameMaster.infoLabel3.Text = ""
  
+    $scoreObject = [PSCustomObject]@{
+        EasyTotalGames = 0; EasyWins = 0; EasyLosses = 0
+        MediumTotalGames = 0; MediumWins = 0; MediumLosses = 0
+        HardTotalGames = 0; HardWins = 0; HardLosses = 0
+    }
+ 
+    switch ( $GameMaster.mode ) {
+        1 { $scoreObject.EasyTotalGames = 1; $scoreObject.EasyWins = 1 }
+        2 { $scoreObject.MediumTotalGames = 1; $scoreObject.MediumWins = 1 }
+        3 { $scoreObject.HardTotalGames = 1; $scoreObject.HardWins = 1 }
+    }
+ 
+    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -CrossMath -User $env:USERNAME -Score $scoreObject
+ 
+    return
+}
+ 
+function Set-Lose {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+ 
+    $scoreObject = [PSCustomObject]@{
+        EasyTotalGames = 0; EasyWins = 0; EasyLosses = 0
+        MediumTotalGames = 0; MediumWins = 0; MediumLosses = 0
+        HardTotalGames = 0; HardWins = 0; HardLosses = 0
+    }
+ 
+    switch ( $GameMaster.mode ) {
+        1 { $scoreObject.EasyTotalGames = 1; $scoreObject.EasyLosses = 1 }
+        2 { $scoreObject.MediumTotalGames = 1; $scoreObject.MediumLosses = 1 }
+        3 { $scoreObject.HardTotalGames = 1; $scoreObject.HardLosses = 1 }
+    }
+ 
+    $result = & "T:\Jacobo\_PSGames\_Scores\ScoreTracker.ps1" -Save -CrossMath -User $env:USERNAME -Score $scoreObject
+ 
+    return
+}
+ 
+function Close-Game {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+   
+    if ( $GameMaster.start ) {
+        Set-Lose -GameMaster $GameMaster
+    }
+ 
     return
 }
  
@@ -489,6 +552,9 @@ $gameMaster = [PSCustomObject]@{
  
 $form = [System.Windows.Forms.Form]::new()
 $form.Text = "CrossMath"
+$form.Add_FormClosing({
+    Close-Game -GameMaster $gameMaster
+})
  
 $mainPanel = [System.Windows.Forms.FlowLayoutPanel]::new()
 $mainPanel.Padding = [System.Windows.Forms.Padding]::new( 5, 5, 5, 5 )
@@ -564,7 +630,7 @@ foreach ( $row in 0..6 ) {
                 $gameMaster.grid."$( $column )_$( $row )".BackColor = $gameMaster.colors.result
                 $gameMaster.grid."$( $column )_$( $row )".Text = $gameMaster.results."$( $column )_$( $row )"
                 $gameMaster.grid."$( $column )_$( $row )".Name = "r_$( $column )_$( $row )"
-           } elseif (( $row -eq 6 ) -and (( $column -eq 0 ) -or ( $column -eq 2) -or ( $column -eq 4))) {
+            } elseif (( $row -eq 6 ) -and (( $column -eq 0 ) -or ( $column -eq 2) -or ( $column -eq 4))) {
                 $gameMaster.grid."$( $column )_$( $row )".BackColor = $gameMaster.colors.result
                 $gameMaster.grid."$( $column )_$( $row )".Text = $gameMaster.results."$( $column )_$( $row )"
                 $gameMaster.grid."$( $column )_$( $row )".Name = "r_$( $column )_$( $row )"
@@ -586,7 +652,7 @@ foreach ( $row in 0..6 ) {
                 $gameMaster.grid."$( $column )_$( $row )".BackColor = $gameMaster.colors.blank
                 $gameMaster.grid."$( $column )_$( $row )".Name = "b_$( $column )_$( $row )"
             }
-       } elseif ((( $column % 2 ) -ne 0 ) -or (( $row % 2 ) -ne 0 )) {
+        } elseif ((( $column % 2 ) -ne 0 ) -or (( $row % 2 ) -ne 0 )) {
             # Operands
             if ((( $column % 2 ) -ne 0 ) -and (( $row % 2 ) -ne 0 )) {
                 $gameMaster.grid."$( $column )_$( $row )".BackColor = $gameMaster.colors.blank
@@ -603,8 +669,8 @@ foreach ( $row in 0..6 ) {
             $gameMaster.grid."$( $column )_$( $row )".Name = "n_$( $column )_$( $row )"
         }
  
-       $gameMaster.grid."$( $column )_$( $row )".Add_MouseClick({
-            New-MouseClick -GameMaster $gameMaster -Name $this.Name
+        $gameMaster.grid."$( $column )_$( $row )".Add_MouseClick({
+            New-MouseClick -GameMaster $gameMaster -Name $this.Name -Left
         })
         $gameMaster.grid."$( $column )_$( $row )".Add_MouseEnter({
             New-MouseEnter -GameMaster $gameMaster -Name $this.Name
