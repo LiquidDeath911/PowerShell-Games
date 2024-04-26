@@ -617,7 +617,7 @@ foreach ( $row in 0..6 ) {
         }
  
         $gameMaster.grid."$( $column )_$( $row )".Add_MouseClick({
-            New-MouseClick -GameMaster $gameMaster -Name $this.Name -Left
+            New-MouseClick -GameMaster $gameMaster -Name $this.Name
         })
         $gameMaster.grid."$( $column )_$( $row )".Add_MouseEnter({
             New-MouseEnter -GameMaster $gameMaster -Name $this.Name
