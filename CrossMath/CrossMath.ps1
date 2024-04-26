@@ -79,10 +79,31 @@ function Out-Message {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
         [string]$Type,
-        [string]$Message       
+        [string]$Message        
     )
  
     Write-Host "$( $Type ) | $( $Message )"
+ 
+    return
+}
+ 
+function Set-Colors {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+   
+    $GameMaster.colors.number = [System.Drawing.Color]::White
+    $GameMaster.colors.operand = [System.Drawing.Color]::DimGray
+    $GameMaster.colors.equal = [System.Drawing.Color]::DimGray
+    $GameMaster.colors.result = [System.Drawing.Color]::SlateGray
+    $GameMaster.colors.hover = [System.Drawing.Color]::Orange
+    $GameMaster.colors.input = [System.Drawing.Color]::CadetBlue
+    $GameMaster.colors.note = [System.Drawing.Color]::DeepPink
+    $GameMaster.colors.noteFont = [System.Drawing.Color]::Blue
+    $GameMaster.colors.blank = [System.Drawing.Color]::Black
+    $GameMaster.colors.correct = [System.Drawing.Color]::Green
+    $GameMaster.colors.incorrect = [System.Drawing.Color]::Red
  
     return
 }
@@ -106,7 +127,7 @@ function Set-KeyDown {
         } elseif (( $_.KeyCode -eq "D4" ) -or ( $_.KeyCode -eq "NumPad4" )) {
             New-KeyDown -GameMaster $GameMaster -Key 4
         } elseif (( $_.KeyCode -eq "D5" ) -or ( $_.KeyCode -eq "NumPad5" )) {
-           New-KeyDown -GameMaster $GameMaster -Key 5
+            New-KeyDown -GameMaster $GameMaster -Key 5
         } elseif (( $_.KeyCode -eq "D6" ) -or ( $_.KeyCode -eq "NumPad6" )) {
             New-KeyDown -GameMaster $GameMaster -Key 6
         } elseif (( $_.KeyCode -eq "D7" ) -or ( $_.KeyCode -eq "NumPad7" )) {
@@ -191,7 +212,9 @@ function New-MouseClick {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
         [PSCustomObject]$GameMaster,
-        [string]$Name
+        [string]$Name,
+        [switch]$Left,
+        [switch]$Right
     )
  
     $split = $Name.Split( "_" )
@@ -199,21 +222,63 @@ function New-MouseClick {
     $column = $split[1]
     $row = $split[2]
  
-    if ( $type -eq "n" ) {
-        foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
-            if (( $property.Name -ne "$( $column )_$( $row )" ) -and ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.input )) {
-                $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+    if ( $Left ) {
+        if ( $type -eq "n" ) {
+            $GameMaster.click = "Left"
+            foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
+                if (( $property.Name -ne "$( $column )_$( $row )" ) -and ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.input )) {
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                }
+                if (( $property.Name -ne "$( $column )_$( $row )" ) -and ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.note )) {
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                }
+            }
+ 
+            if ( $GameMaster.grid."$( $column )_$( $row )".BackColor -eq $GameMaster.colors.input ) {
+                $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.number
+                $GameMaster.click = ""
+            } else {
+                $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.input
             }
         }
+    } elseif ( $Right ) {
+        if ( $type -eq "n" ) {
+            $GameMaster.click = "Right"
+            foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
+                if (( $property.Name -ne "$( $column )_$( $row )" ) -and ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.input )) {
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                }
+                if (( $property.Name -ne "$( $column )_$( $row )" ) -and ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.note )) {
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                }
+            }
  
-        if ( $GameMaster.grid."$( $column )_$( $row )".BackColor -eq $GameMaster.colors.input ) {
-            $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.number
-        } else {
-            $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.input
+            if ( $GameMaster.grid."$( $column )_$( $row )".BackColor -eq $GameMaster.colors.note ) {
+                $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.number
+                $GameMaster.click = ""
+            } else {
+                $GameMaster.grid."$( $column )_$( $row )".BackColor = $GameMaster.colors.note
+            }
         }
     }
  
+ 
     return
+}
+ 
+function Get-NumbersSorted {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [string]$Text
+    )
+ 
+    $array = "$( $Text )".ToCharArray()
+ 
+    $sorted = $array | Sort-Object
+ 
+    $output = $sorted -join ""
+ 
+    return $output
 }
  
 function Set-Number {
@@ -223,24 +288,61 @@ function Set-Number {
         [int]$Number
     )
  
-    foreach ( $property in $GameMaster.userNumbers.PSObject.Properties ) {
-        if (  $GameMaster.userNumbers."$( $property.Name )" -eq $Number ) {
-            $GameMaster.userNumbers."$( $property.Name )" = 0
-            $GameMaster.grid."$( $property.Name )".Text = ""
-        }
-    }
- 
-    foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
-        if ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.input ) {
-            if ( $Number -eq 0 ) {
-                $GameMaster.userNumbers."$( $property.Name )" = 0
-                $GameMaster.grid."$( $property.Name )".Text = ""
-            } else {
-                $GameMaster.userNumbers."$( $property.Name )" = $Number
-                $GameMaster.grid."$( $property.Name )".Text = $Number
+    if ( $GameMaster.click -eq "Left" ) {
+        if ( $Number -ne 0 ) {
+            foreach ( $property in $GameMaster.userNumbers.PSObject.Properties ) {
+                if (  $GameMaster.userNumbers."$( $property.Name )" -eq $Number ) {
+                    $GameMaster.userNumbers."$( $property.Name )" = 0
+                    $GameMaster.grid."$( $property.Name )".Text = ""
+                }
             }
-            $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+        }
  
+        foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
+            if ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.input ) {
+                if ( $Number -eq 0 ) {
+                    $GameMaster.userNumbers."$( $property.Name )" = 0
+                    if ( $GameMaster.userNotes."$( $property.Name )".Length -eq 0 ) {
+                        $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                        $GameMaster.grid."$( $property.Name )".ForeColor = [System.Drawing.Color]::Black
+                        $GameMaster.grid."$( $property.Name )".Text = ""
+                    } else {
+                        $GameMaster.grid."$( $property.Name )".ForeColor = $GameMaster.colors.noteFont
+                        $GameMaster.grid."$( $property.Name )".Text = $GameMaster.userNotes."$( $property.Name )"
+                    }
+                } else {
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                    $GameMaster.grid."$( $property.Name )".ForeColor = [System.Drawing.Color]::Black
+                    $GameMaster.userNumbers."$( $property.Name )" = $Number
+                    $GameMaster.grid."$( $property.Name )".Text = $Number
+                }
+            }
+        }
+    } elseif ( $GameMaster.click -eq "Right" ) {
+        foreach ( $property in $GameMaster.grid.PSObject.Properties ) {
+            if ( $GameMaster.grid."$( $property.Name )".BackColor -eq $GameMaster.colors.note ) {
+                if ( $Number -eq 0 ) {
+                    $GameMaster.userNotes."$( $property.Name )" = ""
+                    $GameMaster.grid."$( $property.Name )".ForeColor = [System.Drawing.Color]::Black
+                    $GameMaster.grid."$( $property.Name )".Text = ""
+                    $GameMaster.grid."$( $property.Name )".BackColor = $GameMaster.colors.number
+                } else {
+                    if ( $GameMaster.userNumbers."$( $property.Name )" -eq 0 ) {
+                        if ( $GameMaster.userNotes."$( $property.Name )" -notmatch "$( $Number )" ) {
+                            $GameMaster.userNotes."$( $property.Name )" += "$( $Number )"
+                            if ( $GameMaster.userNotes."$( $property.Name )".Length -gt 1 ) {
+                                $GameMaster.userNotes."$( $property.Name )" = ( Get-NumbersSorted -Text $GameMaster.userNotes."$( $property.Name )" )
+                            }
+                            $GameMaster.grid."$( $property.Name )".ForeColor = $GameMaster.colors.noteFont
+                            $GameMaster.grid."$( $property.Name )".Text = $GameMaster.userNotes."$( $property.Name )"
+                        } else {
+                            $GameMaster.userNotes."$( $property.Name )" = $GameMaster.userNotes."$( $property.Name )".Replace( "$( $Number )", "" )
+                            $GameMaster.grid."$( $property.Name )".ForeColor = $GameMaster.colors.noteFont
+                            $GameMaster.grid."$( $property.Name )".Text = $GameMaster.userNotes."$( $property.Name )"
+                        }
+                    }
+                }
+            }
         }
     }
  
@@ -281,26 +383,6 @@ function Confirm-Equations {
     if ( $correctCount -eq 6 ) {
         Set-Win -GameMaster $GameMaster
     }
- 
-    return
-}
- 
-function Set-Colors {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        [PSCustomObject]$GameMaster
-    )
-   
-    $GameMaster.colors.number = [System.Drawing.Color]::White
-    $GameMaster.colors.operand = [System.Drawing.Color]::DimGray
-    $GameMaster.colors.equal = [System.Drawing.Color]::DimGray
-    $GameMaster.colors.result = [System.Drawing.Color]::SlateGray
-    $GameMaster.colors.hover = [System.Drawing.Color]::Orange
-    $GameMaster.colors.input = [System.Drawing.Color]::CadetBlue
-    $GameMaster.colors.note = [System.Drawing.Color]::Lavender
-    $GameMaster.colors.blank = [System.Drawing.Color]::Black
-    $GameMaster.colors.correct = [System.Drawing.Color]::Green
-    $GameMaster.colors.incorrect = [System.Drawing.Color]::Red
  
     return
 }
@@ -487,14 +569,17 @@ $gameMaster = [PSCustomObject]@{
     start = $false
     grid = [PSCustomObject]@{}
     mode = 0
+    click = ""
     userNumbers = [PSCustomObject]@{ "0_0" = 0; "2_0" = 0; "4_0" = 0; "0_2" = 0; "2_2" = 0; "4_2" = 0; "0_4" = 0; "2_4" = 0; "4_4" = 0 }
+    userNotes = [PSCustomObject]@{ "0_0" = ""; "2_0" = ""; "4_0" = ""; "0_2" = ""; "2_2" = ""; "4_2" = ""; "0_4" = ""; "2_4" = ""; "4_4" = "" }
     numbers = [PSCustomObject]@{ "0_0" = 0; "2_0" = 0; "4_0" = 0; "0_2" = 0; "2_2" = 0; "4_2" = 0; "0_4" = 0; "2_4" = 0; "4_4" = 0 }
     operands = [PSCustomObject]@{ "1_0" = ""; "3_0" = ""; "0_1" = ""; "2_1" = ""; "4_1" = ""; "1_2" = ""
                                   "3_2" = ""; "0_3" = ""; "2_3" = ""; "4_3" = ""; "1_4" = ""; "3_4" = "" }
     results = [PSCustomObject]@{ "6_0" = 0; "6_2" = 0; "6_4" = 0; "0_6" = 0; "2_6" = 0; "4_6" = 0 }
     equations = [PSCustomObject]@{ "6_0" = "0_0,1_0,2_0,3_0,4_0"; "6_2" = "0_2,1_2,2_2,3_2,4_2"; "6_4" = "0_4,1_4,2_4,3_4,4_4"
                                    "0_6" = "0_0,0_1,0_2,0_3,0_4"; "2_6" = "2_0,2_1,2_2,2_3,2_4"; "4_6" = "4_0,4_1,4_2,4_3,4_4" }
-    colors = [PSCustomObject]@{ number = $null; operand = $null; equal = $null; result = $null; hover = $null; input = $null; note = $null; blank = $null; correct = $null; incorrect = $null }
+    colors = [PSCustomObject]@{ number = $null; operand = $null; equal = $null; result = $null; hover = $null; input = $null
+                                note = $null; noteFont = $null; blank = $null; correct = $null; incorrect = $null }
     infoLabel1 = [System.Windows.Forms.Label]::new()
     infoLabel2 = [System.Windows.Forms.Label]::new()
     infoLabel3 = [System.Windows.Forms.Label]::new()
@@ -570,6 +655,7 @@ foreach ( $row in 0..6 ) {
         $gameMaster.grid."$( $column )_$( $row )".Padding = [System.Windows.Forms.Padding]::new( 0 )
         $gameMaster.grid."$( $column )_$( $row )".Margin = [System.Windows.Forms.Padding]::new( 0 )
         $gameMaster.grid."$( $column )_$( $row )".Dock = [System.Windows.Forms.DockStyle]::Fill
+        $gameMaster.grid."$( $column )_$( $row )".MaximumSize = [System.Drawing.Size]::new( 75, 75 )
  
         if (( $column -eq 6 ) -or ( $row -eq 6 )) {
             # Results
@@ -617,7 +703,12 @@ foreach ( $row in 0..6 ) {
         }
  
         $gameMaster.grid."$( $column )_$( $row )".Add_MouseClick({
-            New-MouseClick -GameMaster $gameMaster -Name $this.Name
+            param($sender, $event)
+            if ( $event.button -eq "Left" ) {
+                New-MouseClick -GameMaster $gameMaster -Name $this.Name -Left
+            } elseif ( $event.button -eq "Right" ) {
+                New-MouseClick -GameMaster $gameMaster -Name $this.Name -Right
+            }
         })
         $gameMaster.grid."$( $column )_$( $row )".Add_MouseEnter({
             New-MouseEnter -GameMaster $gameMaster -Name $this.Name
