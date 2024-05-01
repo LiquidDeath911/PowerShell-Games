@@ -356,7 +356,7 @@ function Set-Lose {
         [PSCustomObject]$GameMaster
     )
 
-    $GameMaster.start = false;
+    $GameMaster.start = $false
 
     return
 }
