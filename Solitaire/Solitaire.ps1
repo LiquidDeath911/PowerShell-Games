@@ -99,7 +99,7 @@ function New-MouseDown {
 
         if ( $GameMaster.selectedCard ) {
             if ( $row -eq "f" ) {
-                $GameMaster.foundation."col$( $column )"."$( $row )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
+                $GameMaster.foundation."col$( $column )"."$( $column )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
             } else  {
                 $GameMaster."col$( $column )"."$( $row )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
             }
@@ -275,8 +275,11 @@ function Find-Card {
         Write-Host "Find-Card | $( $Cell )"
     }
 
-    $ignoreList = "blank", "unused"
-    $foundationList = "0_f", "1_f", "2_f", "3_f"
+    $ignoreList = "0_f", "1_f", "2_f", "3_f", "blank", "unused"
+
+    if ( $Cell -eq "1_f" ) {
+        return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
+    }
 
     foreach ( $property in $GameMaster.cards.PSObject.Properties ) {
 
@@ -284,13 +287,9 @@ function Find-Card {
             #Write-Host "Card | $( $property.Name )"
         }
 
-        if ( $foundationList -contains $property.Name ) {
-            
-        } else {
-            if ( $ignoreList -notcontains $property.Name ) {
-                if ( $GameMaster.cards."$( $property.Name )".cell -eq $Cell ) {
-                    return $property.Name
-                }
+        if ( $ignoreList -notcontains $property.Name ) {
+            if ( $GameMaster.cards."$( $property.Name )".cell -eq $Cell ) {
+                return $property.Name
             }
         }
     }
@@ -425,13 +424,21 @@ function Confirm-CanPlaceCard {
     $suit = $split2[0]
     $value = $split2[1]
 
+    $fromSplit = $GameMaster.cards.$Card.cell.Split( '_' )
+    $fromColumn = $fromSplit[0]
+    $fromRow = $fromSplit[1]
+
     if ( $row -eq "f" ) {
         if ( [int]$column -ge 3 ) {
             if ( [int]$suit -eq ( [int]$column - 3 )) {
                 if ( [int]$value -eq 1 ) {
                     return $true
                 } elseif ( $GameMaster.cards."$( $suit )_$( [int]$value - 1 )".cell -eq $Cell ) {
-                    return $true
+                    if ( $fromRow -eq "f" ) {
+                        return $true
+                    } elseif ( $GameMaster."col$( $fromColumn )"."$( $fromRow )".Size -eq $GameMaster.normalSize ) {
+                        return $true
+                    }
                 }
             }
         }
@@ -511,14 +518,24 @@ function Move-Card {
             $prevSplit = $GameMaster.cards.$Card.cell.Split( '_' )
             $prevColumn = $prevSplit[0]
             $prevRow = $prevSplit[1]
-            $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-            if ( [int]$prevRow -gt 0 ) {
-                $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                    Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                    $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+
+            if ( $prevRow -eq "f" ) {
+                $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
+                if ( $GameMaster.pile.Count -gt 0 ) {
+                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                } else {
+                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
+                }
+            } else {
+                $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
+                if ( [int]$prevRow -gt 0 ) {
+                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
+                    $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
+                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
+                    if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
+                        Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
+                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+                    }
                 }
             }
 
@@ -530,45 +547,60 @@ function Move-Card {
             $prevRow = $prevSplit[1]
 
             if ( [int]$GameMaster.cards.$Card.value -eq 13 ) {
-                $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.normalSize
                 $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.$Card.image
-
-                $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-                if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
-                    Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
-                }
-                if ( [int]$prevRow -eq "f" ) {
-                    $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 ))
-                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )"
-                } elseif ( [int]$prevRow -gt 0 ) {
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                    $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                    if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                        Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+                if ( $prevRow -eq "f" ) {
+                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
+                    $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
+                    if ( $GameMaster.pile.Count -gt 0 ) {
+                        $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                    } else {
+                        $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
+                    }
+                } else {
+                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
+                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
+                    if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
+                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
+                        Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
+                    }
+                    if ( [int]$prevRow -gt 0 ) {
+                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
+                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
+                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
+                        if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
+                            Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
+                            $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+                        }
                     }
                 }
 
                 $GameMaster.cards.$Card.cell = "$( $column )_$( $row )"
             } else {
                 $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
-                $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
                 $GameMaster."col$( $column )"."$( [int]$row + 1 )".BackgroundImage = $GameMaster.cards.$Card.image
-
-                $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-                if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
-                    Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
-                }
-                if ( [int]$prevRow -gt 0 ) {
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                    $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                    if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                        Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+                if ( $prevRow -eq "f" ) {
+                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
+                    $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
+                    if ( $GameMaster.pile.Count -gt 0 ) {
+                        $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                    } else {
+                        $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
+                    }
+                } else {
+                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
+                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
+                    if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
+                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
+                        Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
+                    }
+                    if ( [int]$prevRow -gt 0 ) {
+                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
+                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
+                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
+                        if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
+                            Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
+                            $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
+                        }
                     }
                 }
 
@@ -694,7 +726,7 @@ function New-Game {
 }
 
 $gameMaster = [PSCustomObject]@{
-    debug = $false
+    debug = $true
     start = $false
     cards = [PSCustomObject]@{}
     deck = [System.Collections.ArrayList]::new()
@@ -721,7 +753,7 @@ foreach ( $card in $cards ) {
         $gameMaster.cards | Add-Member -MemberType NoteProperty -Name "$( $name )" -Value $( [PSCustomObject]@{} )
     }
 
-    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "image" -Value $( [System.Drawing.Image]::FromFile( $card.FullName ) )
+    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "image" -Value $( [System.Drawing.Image]::FromFile( ".\Cards\$( $card.Name )" ))
     $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "cell" -Value $( "" )
     $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "suit" -Value $( $split[0] )
     if ( $count -le 1 ) {
