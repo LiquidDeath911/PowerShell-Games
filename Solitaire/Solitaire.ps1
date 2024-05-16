@@ -923,7 +923,7 @@ foreach ( $card in $cards ) {
     }
 }
 
-$gameMaster.form.Text = "Card Game"
+$gameMaster.form.Text = "Solitaire"
 $gameMaster.form.Add_Closed({ Clear-Images -GameMaster $gameMaster })
 $gameMaster.form.Name = "AutoSize"
 
