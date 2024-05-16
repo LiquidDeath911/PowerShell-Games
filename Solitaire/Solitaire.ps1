@@ -27,6 +27,48 @@ function Set-AutoSize {
     return
 }
 
+function Set-Suspend {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        $Control
+    )
+
+    try {
+        $Control.SuspendLayout()
+    } catch {
+
+    }
+
+    if ( $Control.Controls.Count -gt 0 ) {
+        foreach ( $subControl in $Control.Controls ) {
+            Set-AutoSize $subControl
+        }
+    }
+
+    return
+}
+
+function Set-Resume {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        $Control
+    )
+
+    try {
+        $Control.ResumeLayout()
+    } catch {
+
+    }
+
+    if ( $Control.Controls.Count -gt 0 ) {
+        foreach ( $subControl in $Control.Controls ) {
+            Set-AutoSize $subControl
+        }
+    }
+
+    return
+}
+
 function Clear-Images {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
@@ -99,7 +141,9 @@ function New-MouseDown {
 
         if ( $GameMaster.selectedCard ) {
             if ( $row -eq "f" ) {
-                $GameMaster.foundation."col$( $column )"."$( $column )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
+                if ( [int]$column -ge 1 ) {
+                    $GameMaster.foundation."col$( $column )"."$( $column )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
+                }
             } else  {
                 $GameMaster."col$( $column )"."$( $row )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
             }
@@ -224,7 +268,7 @@ function Pop-Card {
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Pop-Card | $( $Cell )"
+        Write-Host "Pop-Card | DeckCount-$( $GameMaster.deck.Count )"
     }
 
     if ( $GameMaster.deck.Count -eq 0 ) {
@@ -234,10 +278,12 @@ function Pop-Card {
 
         $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
         $GameMaster.cards."$( $GameMaster.deck[0] )".cell = "1_f"
+        $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
         $GameMaster.deck.RemoveAt( 0 ) | Out-Null
 
         if ( $GameMaster.deck.Count -eq 0 ) {
             $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.blank.image
+            $GameMaster.deck.Clear()
         }
     }
 
@@ -250,16 +296,26 @@ function Pop-Deck {
         [PSCustomObject]$GameMaster
     )
 
+    Set-Suspend -Control $GameMaster.form
+
     if ( $GameMaster.debug ) {
-        Write-Host "Pop-Deck | $( $Cell )"
+        Write-Host "Pop-Deck"
     }
 
     foreach ( $card in $GameMaster.pile ) {
-        $GameMaster.deck.Add( $card ) | Out-Null
-        $GameMaster.cards.$card.cell = "0_f"
+        $GameMaster.deck.Add( "$( $card )" ) | Out-Null
+        $GameMaster.cards."$( $card )".cell = "0_f"
+        $GameMaster.cards."$( $card )".faceUp = $false
     }
 
     $GameMaster.pile.Clear()
+
+    if ( $GameMaster.deck.Count -gt 0 ) {
+        $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.back.image
+    }
+    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
+
+    Set-Resume -Control $GameMaster.form
 
     return
 }
@@ -461,6 +517,8 @@ function Set-Card {
         [string]$Card
     )
 
+    Set-Suspend -Control $GameMaster.form
+
     if ( $GameMaster.debug ) {
         Write-Host "Set-Card | $( $Cell ) | $( $Card )"
     }
@@ -471,16 +529,15 @@ function Set-Card {
 
     if ( $GameMaster.cards.$Card.faceUp ) {
         $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.$Card.image
+        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.normalSize
     } else {
         $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.back.image
+        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
     }
 
-    if ( [int]$row -gt 0 ) {
-        $GameMaster."col$( $column )"."$( [int]$row - 1 )".Size = $GameMaster.smallSize
-    }
-
-    $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.normalSize
     $GameMaster.cards.$Card.cell = $Cell
+
+    Set-Resume -Control $GameMaster.form
 
     return
 }
@@ -492,6 +549,8 @@ function Move-Card {
         [string]$Cell,
         [string]$Card
     )
+
+    Set-Suspend -Control $GameMaster.form
 
     if ( $GameMaster.debug ) {
         Write-Host "Move-Card | $( $Cell ) | $( $Card )"
@@ -518,6 +577,7 @@ function Move-Card {
             $prevSplit = $GameMaster.cards.$Card.cell.Split( '_' )
             $prevColumn = $prevSplit[0]
             $prevRow = $prevSplit[1]
+            $GameMaster.cards.$Card.cell = $Cell
 
             if ( $prevRow -eq "f" ) {
                 $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
@@ -536,11 +596,13 @@ function Move-Card {
                         Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
                         $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
                     }
+                } else {
+                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
                 }
             }
-
-            $GameMaster.cards.$Card.cell = $Cell
-
+            if ( [int]$GameMaster.cards.$Card.value -eq 13 ) {
+                Confirm-Win -GameMaster $GameMaster
+            }
         } else {
             $prevSplit = $GameMaster.cards.$Card.cell.Split( '_' )
             $prevColumn = $prevSplit[0]
@@ -548,8 +610,9 @@ function Move-Card {
 
             if ( [int]$GameMaster.cards.$Card.value -eq 13 ) {
                 $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.$Card.image
+                $GameMaster.cards.$Card.cell = "$( $column )_$( $row )"
                 if ( $prevRow -eq "f" ) {
-                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
+                    $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
                     $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
                     if ( $GameMaster.pile.Count -gt 0 ) {
                         $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
@@ -557,11 +620,10 @@ function Move-Card {
                         $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
                     }
                 } else {
-                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
+                    $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
                     $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
                     if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
-                        Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
+                        Move-CardsWith -GameMaster $GameMaster -Cell "$( $column )_$( $row )" -PreviousCell "$( $prevColumn )_$( $prevRow )"
                     }
                     if ( [int]$prevRow -gt 0 ) {
                         $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
@@ -571,13 +633,14 @@ function Move-Card {
                             Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
                             $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
                         }
+                    } else {
+                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
                     }
                 }
-
-                $GameMaster.cards.$Card.cell = "$( $column )_$( $row )"
             } else {
                 $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
                 $GameMaster."col$( $column )"."$( [int]$row + 1 )".BackgroundImage = $GameMaster.cards.$Card.image
+                $GameMaster.cards.$Card.cell = "$( $column )_$( [int]$row + 1 )"
                 if ( $prevRow -eq "f" ) {
                     $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
                     $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
@@ -590,8 +653,7 @@ function Move-Card {
                     $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
                     $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
                     if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow + 1 )"
-                        Move-Card -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -Card "$( $GameMaster.tempCard )"
+                        Move-CardsWith -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -PreviousCell "$( $prevColumn )_$( $prevRow )"
                     }
                     if ( [int]$prevRow -gt 0 ) {
                         $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
@@ -601,11 +663,49 @@ function Move-Card {
                             Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
                             $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
                         }
+                    } else {
+                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
                     }
                 }
-
-                $GameMaster.cards.$Card.cell = "$( $column )_$( [int]$row + 1 )"
             }
+        }
+    }
+
+    Set-Resume -Control $GameMaster.form
+
+    return
+}
+
+function Move-CardsWith {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster,
+        [string]$Cell,
+        [string]$PreviousCell
+    )
+
+    $split = $Cell.Split( '_' )
+    $column = [int]$split[0]
+    $row = [int]$split[1]
+
+    $prevSplit = $PreviousCell.Split( '_' )
+    $prevColumn = [int]$prevSplit[0]
+    $prevRow = [int]$prevSplit[1]
+
+    while ( $true ) {
+        $row++
+        $prevRow++
+
+        $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage
+        $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
+        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
+
+        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( $prevRow )"
+        $GameMaster.cards."$( $GameMaster.tempCard )".cell = "$( $column )_$( $row )"
+
+        if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.normalSize ) {
+            $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
+            break
         }
     }
 
@@ -632,12 +732,19 @@ function Reset-Cells {
         [PSCustomObject]$GameMaster
     )
 
+    Set-Suspend -Control $GameMaster.form
+
     foreach ( $row in 0..( $GameMaster.tableRowCount - 1 )) {
         foreach ( $column in 0..6 ) {
             $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.blank.image
-            $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
+            if ( $row -gt 0 ) {
+                $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
+            }
         }
     }
+
+    Set-Resume -Control $GameMaster.form
+
     return
 }
 
@@ -670,6 +777,8 @@ function Set-DealDeck {
         [PSCustomObject]$GameMaster
     )
 
+    Set-Suspend -Control $GameMaster.form
+
     foreach( $row in 0..6 ) {
         foreach( $column in 0..6 ) {
             if ( [int]$column -ge ( [int]$row )) {
@@ -683,6 +792,39 @@ function Set-DealDeck {
             }
         }
     }
+
+    Set-Resume -Control $GameMaster.form
+
+    return
+}
+
+function Confirm-Win {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.cards."0_13".cell -eq "3_f" ) {
+        if ( $GameMaster.cards."1_13".cell -eq "4_f" ) {
+            if ( $GameMaster.cards."2_13".cell -eq "5_f" ) {
+                if ( $GameMaster.cards."3_13".cell -eq "6_f" ) {
+                    Set-Win -GameMaster $GameMaster
+                }
+            }
+        }
+    }
+
+    return
+}
+
+function Set-Win {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    $GameMaster.start = $false
+    #Win
 
     return
 }
@@ -699,6 +841,17 @@ function New-Foundation {
     $GameMaster.foundation.col4."4".BackgroundImage = $GameMaster.cards."1_f".image
     $GameMaster.foundation.col5."5".BackgroundImage = $GameMaster.cards."2_f".image
     $GameMaster.foundation.col6."6".BackgroundImage = $GameMaster.cards."3_f".image
+
+    return
+}
+
+function New-Undo {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    
 
     return
 }
@@ -726,8 +879,9 @@ function New-Game {
 }
 
 $gameMaster = [PSCustomObject]@{
-    debug = $true
+    debug = $false
     start = $false
+    form = [System.Windows.Forms.Form]::new()
     cards = [PSCustomObject]@{}
     deck = [System.Collections.ArrayList]::new()
     pile = [System.Collections.ArrayList]::new()
@@ -738,6 +892,7 @@ $gameMaster = [PSCustomObject]@{
     tempCard = ""
     tempCell = ""
     tableRowCount = 20
+    actions = [System.Collections.ArrayList]::new()
 }
 
 $imagePath = ".\Cards"
@@ -754,7 +909,7 @@ foreach ( $card in $cards ) {
     }
 
     $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "image" -Value $( [System.Drawing.Image]::FromFile( ".\Cards\$( $card.Name )" ))
-    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "cell" -Value $( "" )
+    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "cell" -Value $( "0_f" )
     $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "suit" -Value $( $split[0] )
     if ( $count -le 1 ) {
         $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "value" -Value $( "0" )
@@ -768,10 +923,9 @@ foreach ( $card in $cards ) {
     }
 }
 
-$form = [System.Windows.Forms.Form]::new()
-$form.Text = "Card Game"
-$form.Add_Closed({ Clear-Images -GameMaster $gameMaster })
-$form.Name = "AutoSize"
+$gameMaster.form.Text = "Card Game"
+$gameMaster.form.Add_Closed({ Clear-Images -GameMaster $gameMaster })
+$gameMaster.form.Name = "AutoSize"
 
 $toolStrip = [System.Windows.Forms.ToolStrip]::new()
 $toolStrip.Dock = [System.Windows.Forms.DockStyle]::Top
@@ -781,14 +935,20 @@ $mainPanel.Padding = [System.Windows.Forms.Padding]::new( 5, $toolStrip.Height, 
 $mainPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $mainPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
 $mainPanel.Name = "AutoSize"
-$form.Controls.Add( $toolStrip ) | Out-Null
-$form.Controls.Add( $mainPanel ) | Out-Null
+$gameMaster.form.Controls.Add( $toolStrip ) | Out-Null
+$gameMaster.form.Controls.Add( $mainPanel ) | Out-Null
 
 $newGameButton = [System.Windows.Forms.ToolStripButton]::new()
 $newGameButton.Text = "New Game"
 $newGameButton.Padding = [System.Windows.Forms.Padding]::new( 0, 0, 5, 0 )
 $newGameButton.Add_Click({ New-Game -GameMaster $gameMaster })
 $toolStrip.Items.Add( $newGameButton ) | Out-Null
+
+$undoButton = [System.Windows.Forms.ToolStripButton]::new()
+$undoButton.Text = "Undo"
+$undoButton.Padding = [System.Windows.Forms.Padding]::new( 0, 0, 5, 0 )
+$undoButton.Add_Click({ New-Undo -GameMaster $gameMaster })
+$toolStrip.Items.Add( $undoButton ) | Out-Null
 
 $gridOuter = [System.Windows.Forms.TableLayoutPanel]::new()
 $gridOuter.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -961,7 +1121,7 @@ foreach ( $row in 0..( $tableRowCount - 1 )) {
     }
 }
 
-Set-AutoSize -Control $form
+Set-AutoSize -Control $gameMaster.form
 
-$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
-$form.ShowDialog() | Out-Null
+$gameMaster.form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$gameMaster.form.ShowDialog() | Out-Null
