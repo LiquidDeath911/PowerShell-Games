@@ -1235,6 +1235,10 @@ function New-Game {
     $GameMaster.deck.Clear()
     $GameMaster.pile.Clear()
     $GameMaster.gameStates.Clear()
+    $GameMaster.hearts.Clear()
+    $GameMaster.diamonds.Clear()
+    $GameMaster.spades.Clear()
+    $GameMaster.clubs.Clear()
     $GameMaster.start = $true
 
     Reset-Cards -GameMaster $GameMaster
