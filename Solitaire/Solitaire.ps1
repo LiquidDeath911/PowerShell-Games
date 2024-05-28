@@ -1253,7 +1253,7 @@ function New-Game {
 }
 
 $gameMaster = [PSCustomObject]@{
-    debug = $true
+    debug = $false
     start = $false
     drawOne = $true
     form = [System.Windows.Forms.Form]::new()
