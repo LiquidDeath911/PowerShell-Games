@@ -27,48 +27,6 @@ function Set-AutoSize {
     return
 }
 
-function Set-Suspend {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        $Control
-    )
-
-    try {
-        $Control.SuspendLayout()
-    } catch {
-
-    }
-
-    if ( $Control.Controls.Count -gt 0 ) {
-        foreach ( $subControl in $Control.Controls ) {
-            Set-AutoSize $subControl
-        }
-    }
-
-    return
-}
-
-function Set-Resume {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        $Control
-    )
-
-    try {
-        $Control.ResumeLayout()
-    } catch {
-
-    }
-
-    if ( $Control.Controls.Count -gt 0 ) {
-        foreach ( $subControl in $Control.Controls ) {
-            Set-AutoSize $subControl
-        }
-    }
-
-    return
-}
-
 function Clear-Images {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
@@ -81,6 +39,10 @@ function Clear-Images {
 
     foreach ( $property in $GameMaster.cards.PSObject.Properties ) {
         $GameMaster.cards."$( $property.Name )".image.Dispose()
+    }
+
+    foreach ( $property in $GameMaster.other.PSObject.Properties ) {
+        $GameMaster.other."$( $property.Name )".image.Dispose()
     }
 
     return
@@ -100,13 +62,22 @@ function New-MouseClick {
     }
 
     $split = $Cell.Split( '_' )
-    $column = $split[0]
-    $row = $split[1]
+    $column = [int]$split[0]
+    $row = [int]$split[1]
+    $type = [int]$split[2]
 
     if ( $Left ) {
-        if ( $row -eq "f" ) {
-            if ( [int]$column -eq 0 ) {
-                Pop-Card -GameMaster $GameMaster
+        if ( $Cell -eq "0_0_0" ) {
+            Pop-Card -GameMaster $GameMaster
+        } else {
+            $GameMaster.fromCell = $Cell
+            Get-FromInfo -GameMaster $GameMaster
+            if ( Confirm-CanSelectCard -GameMaster $GameMaster ) {
+                $GameMaster.toCell = "$( $GameMaster.cards."$( $GameMaster.from.card )".suit )_0_1"
+                Get-ToInfo -GameMaster $GameMaster
+                if ( Confirm-CanPlaceCard -GameMaster $GameMaster ) {
+                    Move-Card -GameMaster $GameMaster
+                }
             }
         }
     }
@@ -128,24 +99,14 @@ function New-MouseDown {
         Write-Host "New-MouseDown | $( $Cell ) | L-$( $Left ) | R-$( $Right )"
     }
 
-    $split = $Cell.Split( '_' )
-    $column = $split[0]
-    $row = $split[1]
-
     if ( $Left ) {
-        
-        $GameMaster.selectedCard = Find-Card -GameMaster $GameMaster -Cell $Cell
-        if ( $GameMaster.debug ) {
-            Write-Host "SelectedCard = $( $GameMaster.selectedCard )"
-        }
-
-        if ( $GameMaster.selectedCard ) {
-            if ( $row -eq "f" ) {
-                if ( [int]$column -ge 1 ) {
-                    $GameMaster.foundation."col$( $column )"."$( $column )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
-                }
-            } else  {
-                $GameMaster."col$( $column )"."$( $row )".DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link )
+        $GameMaster.fromCell = $Cell
+        Get-FromInfo -GameMaster $GameMaster
+        if ( Confirm-CanSelectCard -GameMaster $GameMaster ) {
+            switch( $GameMaster.from.type ) {
+                0 { $GameMaster.cells.deck."$( $GameMaster.from.cell )".label.DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link ) }
+                1 { $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link ) }
+                2 { $GameMaster.cells.main."$( $GameMaster.from.cell )".label.DoDragDrop( "", [System.Windows.Forms.DragDropEffects]::Link ) }
             }
         }
     }
@@ -165,61 +126,132 @@ function New-DragDrop {
         Write-Host "New-DragDrop | $( $Cell )"
     }
 
-    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell $Cell
+    $GameMaster.toCell = $Cell
+    Get-ToInfo -GameMaster $GameMaster
 
-    if ( $GameMaster.tempCard -eq $GameMaster.selectedCard ) {
-        if ( Confirm-ToFoundation -GameMaster $GameMaster -Card $GameMaster.tempCard ) {
-            Move-Card -GameMaster $GameMaster -Cell "$(( [int]$GameMaster.cards."$( $GameMaster.tempCard )".suit + 5 ))_f" -Card $GameMaster.tempCard
+    if ( $GameMaster.from.type -eq $GameMaster.to.type ) {
+        if ( $GameMaster.from.column -eq $GameMaster.to.column ) {
+            New-MouseClick -GameMaster $GameMaster -Cell $GameMaster.fromCell -Left
             return
         }
     }
 
-    Move-Card -GameMaster $GameMaster -Cell $Cell -Card $GameMaster.selectedCard
+    if ( $GameMaster.to.type -eq 2 ) {
+        $GameMaster.toCell = Get-UnblockedCard -GameMaster $GameMaster -Cell $Cell
+        Get-ToInfo -GameMaster $GameMaster
+    }
+
+    if ( Confirm-CanPlaceCard -GameMaster $GameMaster ) {
+        Move-Card -GameMaster $GameMaster
+    }
+
 
     return
 
 }
 
-function Confirm-ToFoundation {
+function Get-FromInfo {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Card
+        [PSCustomObject]$GameMaster
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Confirm-ToFoundation | $( $Card )"
+        Write-Host "Get-FromInfo"
     }
 
-    $split = $Card.Split( '_' )
-    $suit = $split[0]
-    $value = $split[1]
-    $column = [int]$suit + 5
+    $fromSplit = $GameMaster.fromCell.Split( '_' )
+    $fromColumn = [int]$fromSplit[0]
+    $fromRow = [int]$fromSplit[1]
+    $fromType = [int]$fromSplit[2]
+    $fromCell = "$( $fromColumn )_$( $fromRow )"
 
-    $fromSplit = $GameMaster.cards.$Card.cell.Split( '_' )
-    $fromColumn = $fromSplit[0]
-    $fromRow = $fromSplit[1]
-
-    if ( [int]$value -eq 1 ) {
-        if ( $fromRow -eq "f" ) {
-            if ( $GameMaster.foundation."col$( $fromColumn )"."$( $fromColumn )".Size -eq $GameMaster.normalSize ) {
-                return $true
-            }
-        } else {
-            return $true
-        }
-    } elseif ( $GameMaster.cards."$( $suit )_$( [int]$value - 1 )".cell -eq "$( $column )_f" ) {
-        if ( $fromRow -eq "f" ) {
-            if ( $GameMaster.foundation."col$( $fromColumn )"."$( $fromColumn )".Size -eq $GameMaster.normalSize ) {
-                return $true
-            }
-        } elseif ( $GameMaster."col$( $fromColumn )"."$( $fromRow )".Size -eq $GameMaster.normalSize ) {
-            return $true
-        }
+    switch( $fromType ) {
+        0 { $fromCard = $GameMaster.cells.deck.$fromCell.card }
+        1 { $fromCard = $GameMaster.cells.foundation.$fromCell.card }
+        2 { $fromCard = $GameMaster.cells.main.$fromCell.card }
     }
 
-    return $false
+    $GameMaster.from.column = $fromColumn
+    $GameMaster.from.row = $fromRow
+    $GameMaster.from.type = $fromType
+    $GameMaster.from.cell = $fromCell
+    $GameMaster.from.card = $fromCard
 
+    return
+}
+
+function Reset-FromInfo {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Reset-FromInfo"
+    }
+
+    $GameMaster.from.column = ""
+    $GameMaster.from.row = ""
+    $GameMaster.from.type = ""
+    $GameMaster.from.cell = ""
+    $GameMaster.from.card = ""
+
+    $GameMaster.fromCell = ""
+
+    return
+}
+
+function Get-ToInfo {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Get-FromInfo"
+    }
+
+    $toSplit = $GameMaster.toCell.Split( '_' )
+    $toColumn = [int]$toSplit[0]
+    $toRow = [int]$toSplit[1]
+    $toType = [int]$toSplit[2]
+    $toCell = "$( $toColumn )_$( $toRow )"
+
+    switch( $toType ) {
+        0 { $toCard = $GameMaster.cells.deck.$toCell.card }
+        1 { $toCard = $GameMaster.cells.foundation.$toCell.card }
+        2 { $toCard = $GameMaster.cells.main.$toCell.card }
+    }
+
+    $GameMaster.to.column = $toColumn
+    $GameMaster.to.row = $toRow
+    $GameMaster.to.type = $toType
+    $GameMaster.to.cell = $toCell
+    $GameMaster.to.card = $toCard
+
+    return
+}
+
+function Reset-ToInfo {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Reset-ToInfo"
+    }
+
+    $GameMaster.to.column = ""
+    $GameMaster.to.row = ""
+    $GameMaster.to.type = ""
+    $GameMaster.to.cell = ""
+    $GameMaster.to.card = ""
+
+    $GameMaster.toCell = ""
+
+    return
 }
 
 function Pop-Card {
@@ -229,74 +261,96 @@ function Pop-Card {
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Pop-Card | DeckCount-$( $GameMaster.deck.Count )"
+        Write-Host "Pop-Card"
+    }
+
+    Save-GameState -GameMaster $GameMaster
+
+    if ( $GameMaster.drawOne ) {
+        if ( $GameMaster.deck.Count -gt 0 ) {
+            $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
+
+            $GameMaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."3_0".label.Size = $GameMaster.size.normal
+
+            $GameMaster.cells.deck."3_0".card = "$( $GameMaster.deck[0] )"
+
+            $GameMaster.pile.Add( $GameMaster.deck[0] ) | Out-Null
+
+            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
+            $GameMaster.deck.RemoveAt( 0 )
+        } else {
+            Pop-Deck -GameMaster $GameMaster
+            return
+        }
+    } else {
+        if ( $GameMaster.deck.Count -ge 3 ) {
+            $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
+            $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[1] )".image
+            $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[2] )".image
+
+            $GameMaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."3_0".label.Size = $GameMaster.size.normal
+
+            $GameMaster.cells.deck."1_0".card = "$( $GameMaster.deck[0] )"
+            $GameMaster.cells.deck."2_0".card = "$( $GameMaster.deck[1] )"
+            $GameMaster.cells.deck."3_0".card = "$( $GameMaster.deck[2] )"
+
+            $GameMaster.pile.Add( $GameMaster.deck[0] ) | Out-Null
+            $GameMaster.pile.Add( $GameMaster.deck[1] ) | Out-Null
+            $GameMaster.pile.Add( $GameMaster.deck[2] ) | Out-Null
+
+            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
+            $GameMaster.cards."$( $GameMaster.deck[1] )".faceUp = $true
+            $GameMaster.cards."$( $GameMaster.deck[2] )".faceUp = $true
+            $GameMaster.deck.RemoveAt( 2 )
+            $GameMaster.deck.RemoveAt( 1 )
+            $GameMaster.deck.RemoveAt( 0 )
+
+        } elseif ( $GameMaster.deck.Count -eq 2 ) {
+            $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
+            $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[1] )".image
+            $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.other.blank.image
+
+            $GameMaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."2_0".label.Size = $GameMaster.size.normal
+
+            $GameMaster.cells.deck."1_0".card = "$( $GameMaster.deck[0] )"
+            $GameMaster.cells.deck."2_0".card = "$( $GameMaster.deck[1] )"
+
+            $GameMaster.pile.Add( $GameMaster.deck[0] ) | Out-Null
+            $GameMaster.pile.Add( $GameMaster.deck[1] ) | Out-Null
+
+            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
+            $GameMaster.cards."$( $GameMaster.deck[1] )".faceUp = $true
+            $GameMaster.deck.RemoveAt( 1 )
+            $GameMaster.deck.RemoveAt( 0 )
+        } elseif ( $GameMaster.deck.Count -eq 1 ) {
+            $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
+            $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.other.blank.image
+            $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.other.blank.image
+
+            $GameMaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+            $GameMaster.cells.deck."1_0".label.Size = $GameMaster.size.normal
+
+            $GameMaster.cells.deck."1_0".card = "$( $GameMaster.deck[0] )"
+
+            $GameMaster.pile.Add( $GameMaster.deck[0] ) | Out-Null
+
+            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
+            $GameMaster.deck.RemoveAt( 0 )
+        } else {
+            Pop-Deck -GameMaster $GameMaster
+            return
+        }
     }
 
     if ( $GameMaster.deck.Count -eq 0 ) {
-        Pop-Deck -GameMaster $GameMaster
-    } else {
-        if ( $GameMaster.drawOne ) {
-            $GameMaster.pile.Add( $GameMaster.deck[0] ) |Out-Null
-            $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
-            $GameMaster.cards."$( $GameMaster.deck[0] )".cell = "3_f"
-            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
-            $GameMaster.deck.RemoveAt( 0 ) | Out-Null
-
-            if ( $GameMaster.deck.Count -eq 0 ) {
-                $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.deck.Clear()
-            }
-        } else {
-
-            $GameMaster.pile.Add( $GameMaster.deck[0] ) |Out-Null
-            $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
-            $GameMaster.cards."$( $GameMaster.deck[0] )".cell = "1_f"
-            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
-            $GameMaster.deck.RemoveAt( 0 ) | Out-Null
-
-            if ( $GameMaster.deck.Count -eq 0 ) {
-                $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                $GameMaster.foundation.col1."1".Size = $GameMaster.normalSize
-                $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.deck.Clear()
-                return
-            }
-
-            $GameMaster.pile.Add( $GameMaster.deck[0] ) |Out-Null
-            $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
-            $GameMaster.cards."$( $GameMaster.deck[0] )".cell = "2_f"
-            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
-            $GameMaster.deck.RemoveAt( 0 ) | Out-Null
-
-            if ( $GameMaster.deck.Count -eq 0 ) {
-                $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                $GameMaster.foundation.col2."2".Size = $GameMaster.normalSize
-                $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.deck.Clear()
-                return
-            }
-
-            $GameMaster.pile.Add( $GameMaster.deck[0] ) |Out-Null
-            $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
-            $GameMaster.cards."$( $GameMaster.deck[0] )".cell = "3_f"
-            $GameMaster.cards."$( $GameMaster.deck[0] )".faceUp = $true
-            $GameMaster.deck.RemoveAt( 0 ) | Out-Null
-
-            $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-            $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-            $GameMaster.foundation.col3."3".Size = $GameMaster.normalSize
-
-            if ( $GameMaster.deck.Count -eq 0 ) {
-                $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.blank.image
-                $GameMaster.deck.Clear()
-                return
-            }
-        }
+        $GameMaster.cells.deck."0_0".label.BackgroundImage = $GameMaster.other.blank.image
     }
 
     return
@@ -308,36 +362,33 @@ function Pop-Deck {
         [PSCustomObject]$GameMaster
     )
 
-    Set-Suspend -Control $GameMaster.form
-
     if ( $GameMaster.debug ) {
         Write-Host "Pop-Deck"
     }
 
+    $GameMaster.deck.Clear()
+
     foreach ( $card in $GameMaster.pile ) {
-        $GameMaster.deck.Add( "$( $card )" ) | Out-Null
-        $GameMaster.cards."$( $card )".cell = "0_f"
-        $GameMaster.cards."$( $card )".faceUp = $false
+        $GameMaster.deck.Add( $card ) | Out-Null
+        $GameMaster.cards.$card.faceUp = $false
     }
 
     $GameMaster.pile.Clear()
 
-    if ( $GameMaster.deck.Count -gt 0 ) {
-        $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.back.image
-    }
-    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-    $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-    $GameMaster.foundation.col3."3".Size = $GameMaster.normalSize
+    $GameMaster.cells.deck."0_0".label.BackgroundImage = $GameMaster.other.back.image
 
-    Set-Resume -Control $GameMaster.form
+    $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.other.blank.image
+    $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.other.blank.image
+    $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.other.blank.image
+
+    $GameMaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+    $GameMaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+    $GameMaster.cells.deck."3_0".label.Size = $GameMaster.size.normal
 
     return
 }
 
-function Find-Card {
+function Get-UnblockedCard {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
         [PSCustomObject]$GameMaster,
@@ -345,83 +396,26 @@ function Find-Card {
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Find-Card | $( $Cell )"
+        Write-Host "Get-UnblockedCard"
     }
 
-    $ignoreList = "0_f", "1_f", "2_f", "3_f", "blank", "unused"
+    $toSplit = $Cell.Split( '_' )
+    $toColumn = [int]$toSplit[0]
+    $toRow = [int]$toSplit[1]
+    $toType = [int]$toSplit[2]
+    $toCell = "$( $toColumn )_$( $toRow )"
 
-    $split = $Cell.Split( '_' )
-    $column = $split[0]
-    $row = $split[1]
-
-    if ( $row -eq "f" ) {
-        if ( $GameMaster.foundation."col$( $column )"."$( $column )".Size -ne $GameMaster.normalSize ) {
-            return $null
-        }
-    }
-
-    if ( $Gamemaster.drawOne ) {
-        if ( $Cell -eq "3_f" ) {
-            return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
-        }
-    } else {
-        if ( $GameMaster.deckCount -gt 0 ) {
-            if ( $Cell -eq "1_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )
-            } elseif ( $Cell -eq "2_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )
-            } elseif ( $Cell -eq "3_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
+    switch( $toType ) {
+        0 { return $toCell }
+        1 { return $toCell }
+        2 {
+            foreach ( $row in 0..( $GameMaster.layout.mainRows - 1 )) {
+                $cell = "$( $toColumn )_$( $row )"
+                if ( $GameMaster.cells.main.$cell.label.Size -eq $GameMaster.size.normal ) {
+                    $cell = "$( $toColumn )_$( $row )_2"
+                    return $cell
+                }
             }
-        } else {
-            if ( $Cell -eq "3_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
-            } elseif ( $Cell -eq "2_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
-            } elseif ( $Cell -eq "1_f" ) {
-                return $( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )
-            }
-        }
-    }
-
-    foreach ( $property in $GameMaster.cards.PSObject.Properties ) {
-
-        if ( $GameMaster.debug ) {
-            #Write-Host "Card | $( $property.Name )"
-        }
-
-        if ( $ignoreList -notcontains $property.Name ) {
-            if ( $GameMaster.cards."$( $property.Name )".cell -eq $Cell ) {
-                return $property.Name
-            }
-        }
-    }
-
-    return $null
-}
-
-function Get-TopCardCell {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell
-    )
-
-    if ( $GameMaster.debug ) {
-        Write-Host "Get-TopCardCell | $( $Cell )"
-    }
-
-    if ( $Cell -match "f" ) {
-        return $Cell
-    }
-
-    $split = $Cell.Split( '_' )
-    $column = [int]$split[0]
-    $row = [int]$split[1]
-
-    foreach ( $property in $GameMaster."col$( $column )".PSObject.Properties ) {
-        if ( $GameMaster."col$( $column )"."$( $property.Name )".Size -eq $GameMaster.normalSize ) {
-            return "$( $column )_$( $property.Name )"
         }
     }
 
@@ -444,42 +438,68 @@ function Set-FlipCard {
     return
 }
 
-function Confirm-OneUpOppositeSuit {
+function Confirm-CanSelectCard {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell,
-        [string]$Card
+        [PSCustomObject]$GameMaster
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Confirm-OneUpOppositeSuit | $( $Cell ) | $( $Card )"
+        Write-Host "Confirm-CanSelectCard"
+        Write-Host ( $GameMaster.from )
+        Write-Host ( $GameMaster.from.card -ne "" )
+        Write-Host ( $GameMaster.cards."$( $GameMaster.from.card )".faceUp )
+        Write-Host ( $GameMaster.cells.deck."$( $GameMaster.from.cell )".label.Size -eq $GameMaster.size.normal )
     }
 
-    $split = $Cell.Split( '_' )
-    $column = [int]$split[0]
-    $row = [int]$split[1]
-
-    $split2 = $Card.Split( '_' )
-    $suit = [int]$split2[0]
-    $value = [int]$split2[1]
-
-    $oppositeSuits = 0, 0
-
-    switch( $suit ) {
-        0 { $oppositeSuits = 2, 3 }
-        1 { $oppositeSuits = 2, 3 }
-        2 { $oppositeSuits = 0, 1 }
-        3 { $oppositeSuits = 0, 1 }
-    }
-
-    $higherValue = ( $value + 1 )
-
-    foreach ( $oppositeSuit in $oppositeSuits ) {
-        if ( $GameMaster.cards."$( $oppositeSuit )_$( $higherValue )".cell -eq $Cell ) {
-            $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
-            return $true
+    if ( $GameMaster.from.card -ne "" ) {
+        if ( $GameMaster.cards."$( $GameMaster.from.card )".faceUp ) {
+            switch( $GameMaster.from.type ) {
+                0 { if ( $GameMaster.cells.deck."$( $GameMaster.from.cell )".label.Size -eq $GameMaster.size.normal ) { return $true } }
+                1 { return $true }
+                2 { return $true }
+            }
         }
+    }
+
+    return $false
+}
+
+function Confirm-CardValueDifference {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster,
+        [int]$Difference
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Confirm-CardValueDifference | $( $Difference )"
+        Write-Host ( $GameMaster.cards."$( $GameMaster.to.card )".value )
+        Write-Host ( $GameMaster.cards."$( $GameMaster.from.card )".value )
+    }
+
+
+
+    if (( [int]( $GameMaster.cards."$( $GameMaster.to.card )".value ) - [int]( $GameMaster.cards."$( $GameMaster.from.card )".value )) -eq $Difference ) {
+        return $true
+    }
+    
+    return $false
+}
+
+function Confirm-CardOppositeColor {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Confirm-CardOppositeSuit"
+        Write-Host ( $GameMaster.cards."$( $GameMaster.from.card )".color -ne $GameMaster.cards."$( $GameMaster.to.card )".color )
+    }
+
+    if ( $GameMaster.cards."$( $GameMaster.from.card )".color -ne $GameMaster.cards."$( $GameMaster.to.card )".color ) {
+        return $true
     }
     
     return $false
@@ -488,338 +508,310 @@ function Confirm-OneUpOppositeSuit {
 function Confirm-EmptyColumn {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell
+        [PSCustomObject]$GameMaster
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Confirm-EmptyColumn | $( $Cell )"
+        Write-Host "Confirm-EmptyColumn"
+        switch( $GameMaster.to.type ) {
+            0 { Write-Host ( -not $GameMaster.cells.deck."$( $GameMaster.to.cell )".card ) }
+            1 { Write-Host ( -not $GameMaster.cells.foundation."$( $GameMaster.to.cell )".card ) }
+            2 { Write-Host ( -not $GameMaster.cells.main."$( $GameMaster.to.cell )".card ) }
+        }
     }
 
-    $split = $Cell.Split( '_' )
-    $column = [int]$split[0]
-    $row = [int]$split[1]
-
-    if ( -not ( Find-Card -GameMaster $GameMaster -Cell "$( $column )_0" )) {
-        return $true
+    switch( $GameMaster.to.type ) {
+        0 { if ( -not $GameMaster.cells.deck."$( $GameMaster.to.cell )".card ) { return $true } }
+        1 { if ( -not $GameMaster.cells.foundation."$( $GameMaster.to.cell )".card ) { return $true } }
+        2 { if ( -not $GameMaster.cells.main."$( $GameMaster.to.cell )".card ) { return $true } }
     }
     
     return $false
+}
+
+function Confirm-CanPlaceOnFoundation {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    if ( $GameMaster.debug ) {
+        Write-Host "Confirm-CanPlaceOnFoundation"
+        Write-Host ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 1 )
+        if ( -not ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 1 )) {
+            switch( $GameMaster.cards."$( $GameMaster.from.card )".suit ) {
+                0 { Write-Host ( $GameMaster.hearts -contains $cardOneLower ) }
+                1 { Write-Host ( $GameMaster.diamonds -contains $cardOneLower ) }
+                2 { Write-Host ( $GameMaster.spades -contains $cardOneLower ) }
+                3 { Write-Host ( $GameMaster.clubs -contains $cardOneLower ) }
+            }
+        }
+    }
+
+    if ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 1 ) {
+        return $true
+    }
+
+    $cardOneLower = "$( $GameMaster.cards."$( $GameMaster.from.card )".suit )_$( $GameMaster.cards."$( $GameMaster.from.card )".value - 1 )"
+
+    switch( $GameMaster.cards."$( $GameMaster.from.card )".suit ) {
+        0 { if ( $GameMaster.hearts -contains $cardOneLower ) { return $true } }
+        1 { if ( $GameMaster.diamonds -contains $cardOneLower ) { return $true } }
+        2 { if ( $GameMaster.spades -contains $cardOneLower ) { return $true } }
+        3 { if ( $GameMaster.clubs -contains $cardOneLower ) { return $true } }
+    }
+
+    return $false
+
 }
 
 function Confirm-CanPlaceCard {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell,
-        [string]$Card
+        [PSCustomObject]$GameMaster
     )
 
     if ( $GameMaster.debug ) {
-        Write-Host "Confirm-CanPlaceCard | $( $Cell ) | $( $Card )"
+        Write-Host "Confirm-CanPlaceCard"
     }
 
-    $split = $Cell.Split( '_' )
-    $column = $split[0]
-    $row = $split[1]
-
-    $split2 = $Card.Split( '_' )
-    $suit = $split2[0]
-    $value = $split2[1]
-
-    $fromSplit = $GameMaster.cards.$Card.cell.Split( '_' )
-    $fromColumn = $fromSplit[0]
-    $fromRow = $fromSplit[1]
-
-    if ( $row -eq "f" ) {
-        if ( $GameMaster.cards.$Card.suit -eq ( [int]$column - 5 )) {
-            return ( Confirm-ToFoundation -GameMaster $GameMaster -Card $Card )
-        }
-    } else  {
-        if ( $fromRow -eq "f" ) {
-            if ( $GameMaster.foundation."col$( $fromColumn )"."$( $fromColumn )".Size -ne $GameMaster.normalSize ) {
-                return $false
+    if ( $GameMaster.to.type -eq 1 ) {
+        # To Foundation
+        return ( Confirm-CanPlaceOnFoundation -GameMaster $GameMaster )
+    } else {
+        if ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 13 ) {
+            # King
+            return ( Confirm-EmptyColumn -GameMaster $GameMaster )
+        } else {
+            # Not King
+            if ( Confirm-CardOppositeColor -GameMaster $GameMaster ) {
+                return ( Confirm-CardValueDifference -GameMaster $GameMaster -Difference 1 )
             }
         }
-        if ( [int]$value -eq 13 ) {
-            return ( Confirm-EmptyColumn -GameMaster $GameMaster -Cell $Cell )
-        } else {
-            return ( Confirm-OneUpOppositeSuit -GameMaster $GameMaster -Cell $Cell -Card $Card )
-        }
     }
-    
+
     return $false
-}
-
-function Set-Card {
-    [ CmdletBinding( SupportsShouldProcess )]
-    param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell,
-        [string]$Card
-    )
-
-    Set-Suspend -Control $GameMaster.form
-
-    if ( $GameMaster.debug ) {
-        Write-Host "Set-Card | $( $Cell ) | $( $Card )"
-    }
-
-    $split = $Cell.Split( '_' )
-    $column = $split[0]
-    $row = $split[1]
-
-    if ( $GameMaster.cards.$Card.faceUp ) {
-        $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.$Card.image
-        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.normalSize
-    } else {
-        $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.back.image
-        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
-    }
-
-    $GameMaster.cards.$Card.cell = $Cell
-
-    Set-Resume -Control $GameMaster.form
-
-    return
 }
 
 function Move-Card {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell,
-        [string]$Card
+        [PSCustomObject]$GameMaster
     )
 
-    Set-Suspend -Control $GameMaster.form
-
     if ( $GameMaster.debug ) {
-        Write-Host "Move-Card | $( $Cell ) | $( $Card )"
+        Write-Host "Move-Card"
+        Write-Host $GameMaster.from
+        Write-Host $GameMaster.to
     }
 
-    $GameMaster.tempCell = Get-TopCardCell -GameMaster $GameMaster -Cell $Cell
+    $tempCell = $GameMaster.to.cell
+    $GameMaster.to.cell = "$( $GameMaster.to.column )_$( $GameMaster.to.row + 1 )"
 
-    if ( -not $GameMaster.tempCell ) {
-        $split = $Cell.Split( '_' )
-    } else {
-        $split = $GameMaster.tempCell.Split( '_' )
-    }
-    $column = $split[0]
-    $row = $split[1]
-
-    if ( $GameMaster.cards.$Card.cell -eq $Cell ) {
-        return
-    }
-
-    if ( Confirm-CanPlaceCard -GameMaster $GameMaster -Cell $GameMaster.tempCell -Card $Card ) {
-        if ( $row -eq "f" ) {
-            $GameMaster.foundation."col$( $column )"."$( $column )".BackgroundImage = $GameMaster.cards.$Card.image
-
-            $prevSplit = $GameMaster.cards.$Card.cell.Split( '_' )
-            $prevColumn = $prevSplit[0]
-            $prevRow = $prevSplit[1]
-            $GameMaster.cards.$Card.cell = $Cell
-
-            if ( $prevRow -eq "f" ) {
-                $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
-                if ( $GameMaster.drawOne ) {
-                    if ( $GameMaster.pile.Count -gt 0 ) {
-                        $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                    } else {
-                        $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                    }
-                } else {
-                    if ( $prevColumn -gt 1 ) {
-                        $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size = $GameMaster.foundationSmallSize
-                        $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                        $GameMaster.foundation."col$( [int]$prevColumn - 1 )"."$( [int]$prevColumn - 1 )".Size = $GameMaster.normalSize
-                    } else {
-                        if ( $GameMaster.pile.Count -gt 0 ) {
-                            if ( $GameMaster.pile.Count -eq 1 ) {
-                                $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-                                $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col1."1".Size = $GameMaster.normalSize
-                            } elseif ( $GameMaster.pile.Count -eq 2 ) {
-                                $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col2."2".Size = $GameMaster.normalSize
-                            } else {
-                                $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )".image
-                                $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                $GameMaster.foundation.col3."3".Size = $GameMaster.normalSize
-                            }
-                        } else {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                        }
-                    }
-                }
-
-            } else {
-                $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-                if ( [int]$prevRow -gt 0 ) {
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                    $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                    $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                    if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                        Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
-                    }
-                } else {
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
+    switch( $GameMaster.to.type ) {
+        0 {
+            Reset-FromInfo -GameMaster $GameMaster
+            Reset-ToInfo -GameMaster $GameMaster
+            return
+        }
+        1 {
+            Save-GameState -GameMaster $GameMaster
+            switch( $GameMaster.cards."$( $GameMaster.from.card )".suit ) {
+                0 { $GameMaster.hearts.Add( "$( $GameMaster.from.card )" ) | Out-Null }
+                1 { $GameMaster.diamonds.Add( "$( $GameMaster.from.card )" ) | Out-Null }
+                2 { $GameMaster.spades.Add( "$( $GameMaster.from.card )" ) | Out-Null }
+                3 { $GameMaster.clubs.Add( "$( $GameMaster.from.card )" ) | Out-Null }
+            }
+            $tempCell = "$( $GameMaster.cards."$( $GameMaster.from.card )".suit )_0"
+            $GameMaster.cells.foundation."$( $tempCell )".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.from.card )".image
+            $GameMaster.cells.foundation."$( $tempCell )".card = "$( $GameMaster.from.card )"
+            if ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 13 ) {
+                if ( Confirm-Win -GameMaster $GameMaster ) {
+                    Set-Win -GameMaster $GameMaster
                 }
             }
-            if ( [int]$GameMaster.cards.$Card.value -eq 13 ) {
-                Confirm-Win -GameMaster $GameMaster
-            }
-        } else {
-            $prevSplit = $GameMaster.cards.$Card.cell.Split( '_' )
-            $prevColumn = $prevSplit[0]
-            $prevRow = $prevSplit[1]
-
-            if ( [int]$GameMaster.cards.$Card.value -eq 13 ) {
-                $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.$Card.image
-                $GameMaster.cards.$Card.cell = "$( $column )_$( $row )"
-                if ( $prevRow -eq "f" ) {
-                    $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
-                    $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
-                    if ( $GameMaster.drawOne ) {
-                        if ( $GameMaster.pile.Count -gt 0 ) {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                        } else {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                        }
+        }
+        2 {
+            Save-GameState -GameMaster $GameMaster
+            if ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 13 ) {
+                $GameMaster.cells.main.$tempCell.label.BackgroundImage = $GameMaster.cards."$( $GameMaster.from.card )".image
+                $GameMaster.cells.main.$tempCell.card = "$( $GameMaster.from.card )"
+                if ( $GameMaster.from.type -eq 2 ) {
+                    if ( $GameMaster.cells.main."$( $GameMaster.from.cell )".label.Size -ne $GameMaster.size.normal ) {
+                        $GameMaster.cells.main.$tempCell.label.Size = $GameMaster.size.small
                     } else {
-                        if ( $prevColumn -gt 1 ) {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size = $GameMaster.foundationSmallSize
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                            $GameMaster.foundation."col$( [int]$prevColumn - 1 )"."$( [int]$prevColumn - 1 )".Size = $GameMaster.normalSize
-                        } else {
-                            if ( $GameMaster.pile.Count -gt 0 ) {
-                                if ( $GameMaster.pile.Count -eq 1 ) {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.normalSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                } elseif ( $GameMaster.pile.Count -eq 2 ) {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.normalSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                } else {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.normalSize
-                                }
-                            } else {
-                                $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                            }
-                        }
+                        $GameMaster.cells.main.$tempCell.label.Size = $GameMaster.size.normal
                     }
                 } else {
-                    $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-                    if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                        Move-CardsWith -GameMaster $GameMaster -Cell "$( $column )_$( $row )" -PreviousCell "$( $prevColumn )_$( $prevRow )"
-                    }
-                    if ( [int]$prevRow -gt 0 ) {
-                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                        if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                            Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                            $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
-                        }
-                    } else {
-                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
-                    }
+                    $GameMaster.cells.main.$tempCell.label.Size = $GameMaster.size.normal
                 }
             } else {
-                $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
-                $GameMaster."col$( $column )"."$( [int]$row + 1 )".BackgroundImage = $GameMaster.cards.$Card.image
-                $GameMaster.cards.$Card.cell = "$( $column )_$( [int]$row + 1 )"
-                if ( $prevRow -eq "f" ) {
-                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size
-                    $GameMaster.pile.RemoveAt(( $GameMaster.pile.Count - 1 )) | Out-Null
-                    if ( $GameMaster.drawOne ) {
-                        if ( $GameMaster.pile.Count -gt 0 ) {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                        } else {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                        }
+                $GameMaster.cells.main."$( $GameMaster.to.cell )".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.from.card )".image
+                $GameMaster.cells.main."$( $GameMaster.to.cell )".card = "$( $GameMaster.from.card )"
+
+                $GameMaster.cells.main.$tempCell.label.Size = $GameMaster.size.small
+                if ( $GameMaster.from.type -eq 2 ) {
+                    if ( $GameMaster.cells.main."$( $GameMaster.from.cell )".label.Size -ne $GameMaster.size.normal ) {
+                        $GameMaster.cells.main."$( $GameMaster.to.cell )".label.Size = $GameMaster.size.small
                     } else {
-                        if ( $prevColumn -gt 1 ) {
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".Size = $GameMaster.foundationSmallSize
-                            $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                            $GameMaster.foundation."col$( [int]$prevColumn - 1 )"."$( [int]$prevColumn - 1 )".Size = $GameMaster.normalSize
-                        } else {
-                            if ( $GameMaster.pile.Count -gt 0 ) {
-                                if ( $GameMaster.pile.Count -eq 1 ) {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.normalSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                } elseif ( $GameMaster.pile.Count -eq 2 ) {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.normalSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.foundationSmallSize
-                                } else {
-                                    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )".image
-                                    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
-                                    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
-                                    $GameMaster.foundation.col1."1".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col2."2".Size = $GameMaster.foundationSmallSize
-                                    $GameMaster.foundation.col3."3".Size = $GameMaster.normalSize
-                                }
-                            } else {
-                                $GameMaster.foundation."col$( $prevColumn )"."$( $prevColumn )".BackgroundImage = $GameMaster.cards.blank.image
-                            }
-                        }
+                        $GameMaster.cells.main."$( $GameMaster.to.cell )".label.Size = $GameMaster.size.normal
                     }
                 } else {
-                    $GameMaster."col$( $column )"."$( [int]$row + 1 )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
-                    $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-                    if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.smallSize ) {
-                        Move-CardsWith -GameMaster $GameMaster -Cell "$( $column )_$( [int]$row + 1 )" -PreviousCell "$( $prevColumn )_$( $prevRow )"
-                    }
-                    if ( [int]$prevRow -gt 0 ) {
-                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
-                        $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".Size = $GameMaster.normalSize
-                        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( [int]$prevRow - 1 )"
-                        if ( -not $GameMaster.cards."$( $GameMaster.tempCard )".faceUp ) {
-                            Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.tempCard )"
-                            $GameMaster."col$( $prevColumn )"."$( [int]$prevRow - 1 )".BackgroundImage = $GameMaster.cards."$( $GameMaster.tempCard )".image
-                        }
-                    } else {
-                        $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.normalSize
-                    }
+                    $GameMaster.cells.main."$( $GameMaster.to.cell )".label.Size = $GameMaster.size.normal
                 }
             }
         }
     }
 
-    Set-Resume -Control $GameMaster.form
+    switch( $GameMaster.from.type ) {
+        0 {
+            $GameMaster.pile.Remove( "$( $GameMaster.from.card )" )
+            if ( $GameMaster.drawOne ) {
+                if ( $GameMaster.pile.Count -eq 0 ) {
+                    $GameMaster.cells.deck."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other.blank.image
+                    $GameMaster.cells.deck."$( $GameMaster.from.cell )".card = ""
+                } else {
+                    $tempCard = "$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )"
+                    $GameMaster.cells.deck."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+                    $GameMaster.cells.deck."$( $GameMaster.from.cell )".card = $tempCard
+                }
+            } else {
+                switch( $GameMaster.from.column ) {
+                    1 {
+                        switch( $GameMaster.pile.Count ) {
+                            0 {
+                                $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.normal
+
+                                $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.other.blank.image
+                                $GameMaster.cells.deck."1_0".card = ""
+                            }
+                            1 {
+                                $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.normal
+
+                                $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                                $GameMaster.cells.deck."1_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )"
+                            }
+                            2 {
+                                $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.normal
+
+                                $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
+                                $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                                $GameMaster.cells.deck."1_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )"
+                                $GameMaster.cells.deck."2_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )"
+                            }
+                            default {
+                                $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+                                $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.normal
+
+                                $GameMaster.cells.deck."1_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )".image
+                                $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )".image
+                                $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )".image
+                                $GameMaster.cells.deck."1_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 3 )] )"
+                                $GameMaster.cells.deck."2_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 2 )] )"
+                                $GameMaster.cells.deck."3_0".card = "$( $GameMaster.pile[( $GameMaster.pile.Count - 1 )] )"
+                            }
+                        }
+                    }
+                    2 {
+                        $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.deckSmall
+                        $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+                        $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.normal
+
+                        $GameMaster.cells.deck."2_0".label.BackgroundImage = $GameMaster.other.blank.image
+                        $GameMaster.cells.deck."2_0".card = ""
+                    }
+                    3 {
+                        $Gamemaster.cells.deck."1_0".label.Size = $GameMaster.size.deckSmall
+                        $Gamemaster.cells.deck."3_0".label.Size = $GameMaster.size.deckSmall
+                        $Gamemaster.cells.deck."2_0".label.Size = $GameMaster.size.normal
+
+                        $GameMaster.cells.deck."3_0".label.BackgroundImage = $GameMaster.other.blank.image
+                        $GameMaster.cells.deck."3_0".card = ""
+                    }
+                }
+            }
+        }
+        1 {
+            switch( $GameMaster.cards."$( $GameMaster.from.card )".suit ) {
+                0 {
+                    $GameMaster.hearts.Remove( "$( $GameMaster.from.card )" ) | Out-Null
+                    if ( $GameMaster.hearts.Count -eq 0 ) {
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other."0_f".image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = ""
+                    } else {
+                        $tempCard = "$( $GameMaster.hearts[( $GameMaster.hearts.Count - 1 )] )"
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = $tempCard
+                    }
+                }
+                1 {
+                    $GameMaster.diamonds.Remove( "$( $GameMaster.from.card )" ) | Out-Null
+                    if ( $GameMaster.diamonds.Count -eq 0 ) {
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other."1_f".image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = ""
+                    } else {
+                        $tempCard = "$( $GameMaster.diamonds[( $GameMaster.diamonds.Count - 1 )] )"
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = $tempCard
+                    }
+                }
+                2 {
+                    $GameMaster.spades.Remove( "$( $GameMaster.from.card )" ) | Out-Null
+                    if ( $GameMaster.spades.Count -eq 0 ) {
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other."2_f".image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = ""
+                    } else {
+                        $tempCard = "$( $GameMaster.spades[( $GameMaster.spades.Count - 1 )] )"
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = $tempCard
+                    }
+                }
+                3 {
+                    $GameMaster.clubs.Remove( "$( $GameMaster.from.card )" ) | Out-Null
+                    if ( $GameMaster.clubs.Count -eq 0 ) {
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other."3_f".image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = ""
+                    } else {
+                        $tempCard = "$( $GameMaster.clubs[( $GameMaster.clubs.Count - 1 )] )"
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+                        $GameMaster.cells.foundation."$( $GameMaster.from.cell )".card = $tempCard
+                    }
+                }
+            }
+        }
+        2 {
+            if ( $GameMaster.cells.main."$( $GameMaster.from.cell )".label.Size -ne $GameMaster.size.normal ) {
+                Move-CardsWith -GameMaster $GameMaster
+            }
+
+            $GameMaster.cells.main."$( $GameMaster.from.cell )".label.BackgroundImage = $GameMaster.other.blank.image
+            if ( $GameMaster.from.row -gt 0 ) {
+                $GameMaster.cells.main."$( $GameMaster.from.cell )".label.Size = $GameMaster.size.small
+            } else {
+                $GameMaster.cells.main."$( $GameMaster.from.cell )".label.Size = $GameMaster.size.normal
+            }
+            $Gamemaster.cells.main."$( $GameMaster.from.cell )".card = ""
+            
+            $tempCard = $GameMaster.cells.main."$( $GameMaster.from.column )_$( $GameMaster.from.row - 1 )".card
+            if (( $GameMaster.from.row -gt 0 ) -and ( -not $GameMaster.cards.$tempCard.faceUp )) {
+                Set-FlipCard -GameMaster $GameMaster -Card $tempCard
+                $GameMaster.cells.main."$( $GameMaster.from.column )_$( $GameMaster.from.row - 1 )".label.BackgroundImage = $GameMaster.cards.$tempCard.image
+            }
+            if ( $GameMaster.from.row -gt 0 ) {
+                $GameMaster.cells.main."$( $GameMaster.from.column )_$( $GameMaster.from.row - 1 )".label.Size = $GameMaster.size.normal
+            }
+        }
+    }
+
+    Reset-FromInfo -GameMaster $GameMaster
+    Reset-ToInfo -GameMaster $GameMaster
 
     return
 }
@@ -827,32 +819,31 @@ function Move-Card {
 function Move-CardsWith {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
-        [PSCustomObject]$GameMaster,
-        [string]$Cell,
-        [string]$PreviousCell
+        [PSCustomObject]$GameMaster
     )
 
-    $split = $Cell.Split( '_' )
-    $column = [int]$split[0]
-    $row = [int]$split[1]
+    if ( $GameMaster.debug ) {
+        Write-Host "Move-CardsWith"
+    }
 
-    $prevSplit = $PreviousCell.Split( '_' )
-    $prevColumn = [int]$prevSplit[0]
-    $prevRow = [int]$prevSplit[1]
+    $fromRow = $GameMaster.from.row
+    $toRow = ( $GameMaster.to.row + 1 )
+    if ( $GameMaster.cards."$( $GameMaster.from.card )".value -eq 13 ) {
+        $toRow --
+    }
 
     while ( $true ) {
-        $row++
-        $prevRow++
+        $fromRow++
+        $toRow++
 
-        $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage
-        $GameMaster."col$( $prevColumn )"."$( $prevRow )".BackgroundImage = $GameMaster.cards.blank.image
-        $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size
+        $GameMaster.cells.main."$( $GameMaster.to.column )_$( $toRow )".label.BackgroundImage = $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".label.BackgroundImage
+        $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".label.BackgroundImage = $GameMaster.other.blank.image
+        $GameMaster.cells.main."$( $GameMaster.to.column )_$( $toRow )".label.Size = $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".label.Size
+        $GameMaster.cells.main."$( $GameMaster.to.column )_$( $toRow )".card = $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".card
+        $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".card = ""
 
-        $GameMaster.tempCard = Find-Card -GameMaster $GameMaster -Cell "$( $prevColumn )_$( $prevRow )"
-        $GameMaster.cards."$( $GameMaster.tempCard )".cell = "$( $column )_$( $row )"
-
-        if ( $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size -eq $GameMaster.normalSize ) {
-            $GameMaster."col$( $prevColumn )"."$( $prevRow )".Size = $GameMaster.smallSize
+        if ( $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".label.Size -eq $GameMaster.size.normal ) {
+            $GameMaster.cells.main."$( $GameMaster.from.column )_$( $fromRow )".label.Size = $GameMaster.size.small
             break
         }
     }
@@ -867,8 +858,8 @@ function Reset-Cards {
     )
 
     foreach ( $property in $GameMaster.cards.PSObject.Properties ) {
-        $GameMaster.cards."$( $property.Name )".faceUp = $false
-        $GameMaster.cards."$( $property.Name )".cell = ""
+        $name = "$( $property.Name )"
+        $GameMaster.cards.$name.faceUp = $false
     }
 
     return
@@ -879,19 +870,22 @@ function Reset-Cells {
     param(
         [PSCustomObject]$GameMaster
     )
-
-    Set-Suspend -Control $GameMaster.form
-
-    foreach ( $row in 0..( $GameMaster.tableRowCount - 1 )) {
-        foreach ( $column in 0..6 ) {
-            $GameMaster."col$( $column )"."$( $row )".BackgroundImage = $GameMaster.cards.blank.image
-            if ( $row -gt 0 ) {
-                $GameMaster."col$( $column )"."$( $row )".Size = $GameMaster.smallSize
-            }
-        }
+    
+    foreach ( $property in $GameMaster.cells.deck.PSObject.Properties ) {
+        $name = "$( $property.Name )"
+        $GameMaster.cells.deck.$name.label.BackgroundImage = $GameMaster.other.blank.image
     }
 
-    Set-Resume -Control $GameMaster.form
+    foreach ( $property in $GameMaster.cells.foundation.PSObject.Properties ) {
+        $name = "$( $property.Name )"
+        $GameMaster.cells.foundation.$name.label.BackgroundImage = $GameMaster.other.blank.image
+    }
+
+    foreach ( $property in $GameMaster.cells.main.PSObject.Properties ) {
+        $name = "$( $property.Name )"
+        $GameMaster.cells.main.$name.label.Size = $GameMaster.size.small
+        $GameMaster.cells.main.$name.label.BackgroundImage = $GameMaster.other.blank.image
+    }
 
     return
 }
@@ -925,23 +919,61 @@ function Set-DealDeck {
         [PSCustomObject]$GameMaster
     )
 
-    Set-Suspend -Control $GameMaster.form
-
     foreach( $row in 0..6 ) {
         foreach( $column in 0..6 ) {
             if ( [int]$column -ge ( [int]$row )) {
                 if ( $column -lt ( [int]$row + 1 )) {
                     Set-FlipCard -GameMaster $GameMaster -Card "$( $GameMaster.deck[0] )"
-                    Set-Card -GameMaster $GameMaster -Cell "$( $column )_$( $row )" -Card "$( $GameMaster.deck[0] )"
+                    $GameMaster.cells.main."$( $column )_$( $row )".label.BackgroundImage = $GameMaster.cards."$( $GameMaster.deck[0] )".image
+                    $GameMaster.cells.main."$( $column )_$( $row )".label.Size = $GameMaster.size.normal
+                    $GameMaster.cells.main."$( $column )_$( $row )".card = "$( $GameMaster.deck[0] )"
                 } else {
-                    Set-Card -GameMaster $GameMaster -Cell "$( $column )_$( $row )" -Card "$( $GameMaster.deck[0] )"
+                    $GameMaster.cells.main."$( $column )_$( $row )".label.BackgroundImage = $GameMaster.other.back.image
+                    $GameMaster.cells.main."$( $column )_$( $row )".card = "$( $GameMaster.deck[0] )"
                 }
                 $GameMaster.deck.RemoveAt(0)
             }
         }
     }
 
-    Set-Resume -Control $GameMaster.form
+    return
+}
+
+function Set-DeckCell {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster,
+        [string]$Cell,
+        [string]$Card
+    )
+
+    $GameMaster.cells.deck.$Cell.label.BackgroundImage = $GameMaster.cards.$Card.image
+
+    return
+}
+
+function Set-FoundationCell {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster,
+        [string]$Cell,
+        [string]$Card
+    )
+
+    $GameMaster.cells.foundation.$Cell.label.BackgroundImage = $GameMaster.cards.$Card.image
+
+    return
+}
+
+function Set-MainCell {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster,
+        [string]$Cell,
+        [string]$Card
+    )
+
+    $GameMaster.cells.main.$Cell.label.BackgroundImage = $GameMaster.cards.$Card.image
 
     return
 }
@@ -952,17 +984,12 @@ function Confirm-Win {
         [PSCustomObject]$GameMaster
     )
 
-    if ( $GameMaster.cards."0_13".cell -eq "3_f" ) {
-        if ( $GameMaster.cards."1_13".cell -eq "4_f" ) {
-            if ( $GameMaster.cards."2_13".cell -eq "5_f" ) {
-                if ( $GameMaster.cards."3_13".cell -eq "6_f" ) {
-                    Set-Win -GameMaster $GameMaster
-                }
-            }
-        }
-    }
+    if ( $GameMaster.hearts -notcontains "0_13" ) { return $false }
+    if ( $GameMaster.diamonds -notcontains "1_13" ) { return $false }
+    if ( $GameMaster.spades -notcontains "2_13" ) { return $false }
+    if ( $GameMaster.clubs -notcontains "3_13" ) { return $false }
 
-    return
+    return $true
 }
 
 function Set-Win {
@@ -972,26 +999,197 @@ function Set-Win {
     )
 
     $GameMaster.start = $false
-    #Win
+    Write-Host "You Won!"
 
     return
 }
 
-function New-Foundation {
+function Set-Foundation {
     [ CmdletBinding( SupportsShouldProcess )]
     param(
         [PSCustomObject]$GameMaster
     )
 
-    $GameMaster.foundation.col0."0".BackgroundImage = $GameMaster.cards.back.image
-    $GameMaster.foundation.col1."1".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col2."2".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col3."3".BackgroundImage = $GameMaster.cards.blank.image
-    $GameMaster.foundation.col4."4".BackgroundImage = $GameMaster.cards.unused.image
-    $GameMaster.foundation.col5."5".BackgroundImage = $GameMaster.cards."0_f".image
-    $GameMaster.foundation.col6."6".BackgroundImage = $GameMaster.cards."1_f".image
-    $GameMaster.foundation.col7."7".BackgroundImage = $GameMaster.cards."2_f".image
-    $GameMaster.foundation.col8."8".BackgroundImage = $GameMaster.cards."3_f".image
+    $GameMaster.cells.deck."0_0".label.BackgroundImage = $GameMaster.other.back.image
+
+    $GameMaster.cells.foundation."0_0".label.BackgroundImage = $GameMaster.other."0_f".image
+    $GameMaster.cells.foundation."1_0".label.BackgroundImage = $GameMaster.other."1_f".image
+    $GameMaster.cells.foundation."2_0".label.BackgroundImage = $GameMaster.other."2_f".image
+    $GameMaster.cells.foundation."3_0".label.BackgroundImage = $GameMaster.other."3_f".image
+
+    return
+}
+
+function Save-GameState {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    $deckData = ""
+    if ( $GameMaster.deck.Count -gt 0 ) {
+        foreach ( $card in $GameMaster.deck ) {
+            $deckData += ","
+            $deckData += $card
+        }
+        $deckData = $deckData.Substring( 1 )
+    }
+
+    $pileData = ""
+    if ( $GameMaster.pile.Count -gt 0 ) {
+        foreach ( $card in $GameMaster.pile ) {
+            $pileData += ","
+            $pileData += $card
+        }
+        $pileData = $pileData.Substring( 1 )
+    }
+
+    $cardData = ""
+    foreach ( $property in $GameMaster.cards.PSObject.Properties ) {
+        $result = "false"
+        if ( $GameMaster.cards."$( $property.Name )".faceUp ) { $result = "true" }
+        $cardData += ","
+        $cardData += "$( $property.Name );"
+        $cardData += "$( $result )"
+    }
+    $cardData = $cardData.Substring( 1 )
+
+    $cellDeckData = ""
+    foreach ( $property in $GameMaster.cells.deck.PSObject.Properties ) {
+        $result = "false"
+        if ( $GameMaster.cells.deck."$( $property.Name )".label.Size -eq $GameMaster.size.normal ) { $result = "true" }
+        $cellDeckData += ","
+        $cellDeckData += "$( $property.Name );"
+        $cellDeckData += "$( $GameMaster.cells.deck."$( $property.Name )".card );"
+        $cellDeckData += "$( $result )"
+    }
+    $cellDeckData = $cellDeckData.Substring( 1 )
+
+    $cellFoundationData = ""
+    foreach ( $property in $GameMaster.cells.foundation.PSObject.Properties ) {
+        if ( $GameMaster.cells.foundation."$( $property.Name )".card.Length -gt 0 ) {
+            $card = $GameMaster.cells.foundation."$( $property.Name )".card
+        } else {
+            $split = $property.Name.Split( '_' )
+            $card = "$( $split[0] )_f"
+        }
+        $cellFoundationData += ","
+        $cellFoundationData += "$( $property.Name );"
+        $cellFoundationData += $card
+    }
+    $cellFoundationData = $cellFoundationData.Substring( 1 )
+
+    $cellMainData = ""
+    foreach ( $property in $GameMaster.cells.main.PSObject.Properties ) {
+        $result = "false"
+        if ( $GameMaster.cells.main."$( $property.Name )".label.Size -eq $GameMaster.size.normal ) { $result = "true" }
+        $cellMainData += ","
+        $cellMainData += "$( $property.Name );"
+        $cellMainData += "$( $GameMaster.cells.main."$( $property.Name )".card );"
+        $cellMainData += "$( $result )"
+    }
+    $cellMainData = $cellMainData.Substring( 1 )
+
+    $saveData = $deckData + "~" + $pileData + "~" + $cardData + "~" + $cellDeckData + "~" + $cellFoundationData + "~" + $cellMainData
+
+    $GameMaster.gameStates.Add( $saveData ) | Out-Null
+
+    return
+}
+
+function Restore-GameState {
+    [ CmdletBinding( SupportsShouldProcess )]
+    param(
+        [PSCustomObject]$GameMaster
+    )
+
+    $saveData = $GameMaster.gameStates[( $GameMaster.gameStates.Count - 1 )]
+    if ( $GameMaster.gameStates.Count -gt 1 ) {
+        $GameMaster.gameStates.RemoveAt( $GameMaster.gameStates.Count - 1 )
+    }
+
+    $split = $saveData.Split( '~' )
+    $deckData = $split[0]
+    $pileData = $split[1]
+    $cardData = $split[2]
+    $cellDeckData = $split[3]
+    $cellFoundationData = $split[4]
+    $cellMainData = $split[5]
+
+    $GameMaster.deck.Clear()
+    if ( $deckData.Length -gt 0 ) {
+        $splitDeckData = $deckData.Split( ',' )
+        foreach ( $data in $splitDeckData ) {
+            $GameMaster.deck.Add( $data ) | Out-Null
+        }
+    }
+
+    $GameMaster.pile.Clear()
+    if ( $pileData.Length -gt 0 ) {
+        $splitPileData = $pileData.Split( ',' )
+        foreach ( $data in $splitPileData ) {
+            $GameMaster.pile.Add( $data ) | Out-Null
+        }
+    }
+
+    $splitCardData = $cardData.Split( ',' )
+    foreach ( $data in $splitCardData ) {
+        $dataSplit = $data.Split( ';' )
+        if ( $datasplit[1] -eq "true" ) {
+            $GameMaster.cards."$( $dataSplit[0] )".faceUp = $true
+        } else {
+            $GameMaster.cards."$( $dataSplit[0] )".faceUp = $false
+        }
+    }
+
+    $splitCellDeckData = $cellDeckData.Split( ',' )
+    foreach ( $data in $splitCellDeckData ) {
+        $dataSplit = $data.Split( ';' )
+        $GameMaster.cells.deck."$( $dataSplit[0] )".card = $dataSplit[1]
+        if ( $dataSplit[2] -eq "true" ) {
+            $GameMaster.cells.deck."$( $dataSplit[0] )".label.Size = $GameMaster.size.normal
+        } else {
+            $GameMaster.cells.deck."$( $dataSplit[0] )".label.Size = $GameMaster.size.deckSmall
+        }
+        $GameMaster.cells.deck."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.cards."$( $dataSplit[1] )".image
+    }
+    if ( $GameMaster.deck.Count -gt 0 ) {
+        $GameMaster.cells.deck."0_0".label.BackgroundImage = $GameMaster.other.back.image
+    } else {
+        $GameMaster.cells.deck."0_0".label.BackgroundImage = $GameMaster.other.blank.image
+    }
+
+    $splitCellFoundationData = $cellFoundationData.Split( ',' )
+    foreach ( $data in $splitCellFoundationData ) {
+        $dataSplit = $data.Split( ';' )
+        $GameMaster.cells.foundation."$( $dataSplit[0] )".card = $dataSplit[1]
+        if ( $dataSplit[1] -match "f" ) {
+            $GameMaster.cells.foundation."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.other."$( $dataSplit[1] )".image
+        } else {
+            $GameMaster.cells.foundation."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.cards."$( $dataSplit[1] )".image
+        }
+    }
+
+    $splitCellMainData = $cellMainData.Split( ',' )
+    foreach ( $data in $splitCellMainData ) {
+        $dataSplit = $data.Split( ';' )
+        $GameMaster.cells.main."$( $dataSplit[0] )".card = $dataSplit[1]
+        if ( $dataSplit[2] -eq "true" ) {
+            $GameMaster.cells.main."$( $dataSplit[0] )".label.Size = $GameMaster.size.normal
+        } else {
+            $GameMaster.cells.main."$( $dataSplit[0] )".label.Size = $GameMaster.size.small
+        }
+        if ( $dataSplit[1].Length -gt 0 ) {
+            if ( $GameMaster.cards."$( $dataSplit[1] )".faceUp ) {
+                $GameMaster.cells.main."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.cards."$( $dataSplit[1] )".image
+            } else {
+                $GameMaster.cells.main."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.other.back.image
+            }
+        } else {
+            $GameMaster.cells.main."$( $dataSplit[0] )".label.BackgroundImage = $GameMaster.other.blank.image
+        }
+        
+    }
 
     return
 }
@@ -1002,7 +1200,7 @@ function New-Undo {
         [PSCustomObject]$GameMaster
     )
 
-    
+    Restore-GameState -GameMaster $GameMaster
 
     return
 }
@@ -1036,84 +1234,122 @@ function New-Game {
 
     $GameMaster.deck.Clear()
     $GameMaster.pile.Clear()
+    $GameMaster.gameStates.Clear()
     $GameMaster.start = $true
-
-    New-Foundation -GameMaster $GameMaster
 
     Reset-Cards -GameMaster $GameMaster
 
     Reset-Cells -GameMaster $GameMaster
 
+    Set-Foundation -GameMaster $GameMaster
+
     Set-ShuffleDeck -GameMaster $GameMaster
 
     Set-DealDeck -GameMaster $GameMaster
+
+    Save-GameState -GameMaster $GameMaster
 
     return
 }
 
 $gameMaster = [PSCustomObject]@{
-    debug = $false
+    debug = $true
     start = $false
     drawOne = $true
     form = [System.Windows.Forms.Form]::new()
     cards = [PSCustomObject]@{}
+    other = [PSCustomObject]@{}
+    cells = [PSCustomObject]@{
+        deck = [PSCustomObject]@{}
+        foundation = [PSCustomObject]@{}
+        main = [PSCustomObject]@{}
+    }
+    grids = [PSCustomObject]@{
+        deck = [PSCustomObject]@{}
+        foundation = [PSCustomObject]@{}
+        main = [PSCustomObject]@{}
+    }
     deck = [System.Collections.ArrayList]::new()
     pile = [System.Collections.ArrayList]::new()
-    actions = [System.Collections.ArrayList]::new()
-    normalSize = [System.Drawing.Size]::new( 98, 142 )
-    smallSize = [System.Drawing.Size]::new( 98, ( 142 / 6 ))
-    foundationSmallSize = [System.Drawing.Size]::new(( 98 / 3.6 ), 142 )
-    foundation = [PSCustomObject]@{}
-    selectedCard = ""
-    tempCard = ""
-    tempCell = ""
-    tableRowCount = 20
-    tableColumnCount = 7
-    foundationColumnCount = 9
+    hearts = [System.Collections.ArrayList]::new()
+    diamonds = [System.Collections.ArrayList]::new()
+    spades = [System.Collections.ArrayList]::new()
+    clubs = [System.Collections.ArrayList]::new()
+    gameStates = [System.Collections.ArrayList]::new()
+    size = [PSCustomObject]@{
+        normal = [System.Drawing.Size]::new( 98, 142 )
+        small = [System.Drawing.Size]::new( 98, ( 142 / 6 ))
+        deckSmall = [System.Drawing.Size]::new(( 98 / 3.6 ), 142 )
+    }
+    layout = [PSCustomObject]@{
+        deckHorizontal = $true
+        foundationHorizontal = $true
+        deckColumns = 4
+        deckRows = 1
+        foundationColumns = 4
+        foundationRows = 1
+        mainColumns = 7
+        mainRows = 20
+    }
+    fromCell = ""
+    toCell = ""
+    from = [PSCustomObject]@{ column = 0; row = 0; type = 0; cell = ""; card = "" }
+    to = [PSCustomObject]@{ column = 0; row = 0; type = 0; cell = ""; card = "" }
 }
 
-$imagePath = ".\Cards"
-$cards = Get-ChildItem -Path $imagePath
+##### Card Setup #####
+$cardPath = ".\Cards"
+$cards = Get-ChildItem -Path $cardPath -File
 foreach ( $card in $cards ) {
     $name = $card.Name.Replace( '.png', '' )
     $split = $name.Split( "_" )
-    $count = $split.Count
+
     try {
         $gameMaster.cards | Add-Member -MemberType NoteProperty -Name "$( $name )" -Value $( [PSCustomObject]@{} ) -ErrorAction Stop
     } catch {
         $gameMaster.cards.PSObject.Properties.remove( "$( $name )" )
         $gameMaster.cards | Add-Member -MemberType NoteProperty -Name "$( $name )" -Value $( [PSCustomObject]@{} )
     }
-
     $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "image" -Value $( [System.Drawing.Image]::FromFile( ".\Cards\$( $card.Name )" ))
-    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "cell" -Value $( "0_f" )
-    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "suit" -Value $( $split[0] )
-    if ( $count -le 1 ) {
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "value" -Value $( "0" )
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "faceUp" -Value $( $false )
-    } elseif ( $split[1] -eq "f" ) {
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "value" -Value $( "f" )
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "faceUp" -Value $( $true )
+    if ( [int]$split[0] -gt 1 ) {
+        $gamemaster.cards.$name | Add-Member -MemberType NoteProperty -Name "color" -Value "black"
     } else {
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "value" -Value $( [int]$split[1] )
-        $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "faceUp" -Value $( $false )
+        $gamemaster.cards.$name | Add-Member -MemberType NoteProperty -Name "color" -Value "red"
     }
+    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "suit" -Value $( [int]$split[0] )
+    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "value" -Value $( [int]$split[1] )
+    $gameMaster.cards.$name | Add-Member -MemberType NoteProperty -Name "faceUp" -Value $false
 }
+#####
 
+##### Other Setup #####
+$otherPath = ".\Cards\Other"
+$others = Get-ChildItem -Path $otherPath
+foreach ( $other in $others ) {
+    $name = $other.Name.Replace( '.png', '' )
+    $split = $name.Split( "_" )
+
+    try {
+        $gameMaster.other | Add-Member -MemberType NoteProperty -Name "$( $name )" -Value $( [PSCustomObject]@{} ) -ErrorAction Stop
+    } catch {
+        $gameMaster.other.PSObject.Properties.remove( "$( $name )" )
+        $gameMaster.other | Add-Member -MemberType NoteProperty -Name "$( $name )" -Value $( [PSCustomObject]@{} )
+    }
+    $gameMaster.other.$name | Add-Member -MemberType NoteProperty -Name "image" -Value $( [System.Drawing.Image]::FromFile( ".\Cards\Other\$( $other.Name )" ))
+}
+#####
+
+##### Form #####
 $gameMaster.form.Text = "Solitaire"
 $gameMaster.form.Add_Closed({ Clear-Images -GameMaster $gameMaster })
 $gameMaster.form.Name = "AutoSize"
+#####
 
+##### Tool Strip #####
 $toolStrip = [System.Windows.Forms.ToolStrip]::new()
 $toolStrip.Dock = [System.Windows.Forms.DockStyle]::Top
 $toolStrip.GripStyle = [System.Windows.Forms.ToolStripGripStyle]::Hidden
-$mainPanel = [System.Windows.Forms.FlowLayoutPanel]::new()
-$mainPanel.Padding = [System.Windows.Forms.Padding]::new( 5, $toolStrip.Height, 5, 5 )
-$mainPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
-$mainPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
-$mainPanel.Name = "AutoSize"
 $gameMaster.form.Controls.Add( $toolStrip ) | Out-Null
-$gameMaster.form.Controls.Add( $mainPanel ) | Out-Null
 
 $dropDownButtonNewGame = [System.Windows.Forms.ToolStripDropDownButton]::new()
 $dropDownButtonNewGame.Text = "New Game"
@@ -1140,66 +1376,67 @@ $undoButton.Text = "Undo"
 $undoButton.Padding = [System.Windows.Forms.Padding]::new( 0, 0, 5, 0 )
 $undoButton.Add_Click({ New-Undo -GameMaster $gameMaster })
 $toolStrip.Items.Add( $undoButton ) | Out-Null
+#####
 
-$gridOuter = [System.Windows.Forms.TableLayoutPanel]::new()
-$gridOuter.Dock = [System.Windows.Forms.DockStyle]::Fill
-$gridOuter.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom
-$gridOuter.Name = "AutoSize"
-$gridMid = [System.Windows.Forms.FlowLayoutPanel]::new()
-$gridMid.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
-$gridMid.Name = "AutoSize"
+##### Main Panel #####
+$mainPanel = [System.Windows.Forms.FlowLayoutPanel]::new()
+$mainPanel.Padding = [System.Windows.Forms.Padding]::new( 5, $toolStrip.Height, 5, 5 )
+$mainPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$mainPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+$mainPanel.Name = "AutoSize"
+$gameMaster.form.Controls.Add( $mainPanel ) | Out-Null
+#####
 
-foreach( $column in 0..( $gameMaster.foundationColumnCount - 1 )) {
-    $tableName = "table$( $column )"
-    $colName = "col$( $column )"
-    try {
-        $gameMaster.foundation | Add-Member -MemberType NoteProperty -Name $tableName -Value $( [System.Windows.Forms.TableLayoutPanel]::new()) -ErrorAction Stop
-    } catch {
-        $gameMaster.foundation.PSObject.Properties.Remove( $tableName )
-        $gameMaster.foundation | Add-Member -MemberType NoteProperty -Name $tableName -Value $( [System.Windows.Forms.TableLayoutPanel]::new())
-    }
-
-    try {
-        $gameMaster.foundation | Add-Member -MemberType NoteProperty -Name $colName -Value $( [PSCustomObject]@{}) -ErrorAction Stop
-    } catch {
-        $gameMaster.foundation.PSObject.Properties.Remove( $colName )
-        $gameMaster.foundation | Add-Member -MemberType NoteProperty -Name $colName -Value $( [PSCustomObject]@{})
-    }
-
-    $gameMaster.foundation.$tableName.RowCount = 1
-    $gameMaster.foundation.$tableName.ColumnCount = 1
-    $gameMaster.foundation.$tableName.CellBorderStyle = [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::Single
-    $gameMaster.foundation.$tableName.Name = "AutoSize"
-    $gridMid.Controls.Add( $gameMaster.foundation.$tableName ) | Out-Null
+##### Deck Grid/Cells #####
+$deckGridO = [System.Windows.Forms.TableLayoutPanel]::new()
+$deckGridO.Dock = [System.Windows.Forms.DockStyle]::Fill
+$deckGridO.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom
+$deckGridO.Name = "AutoSize"
+$deckGridM = [System.Windows.Forms.FlowLayoutPanel]::new()
+if ( $gameMaster.layout.deckHorizontal ) {
+    $deckGridM.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+} else {
+    $deckGridM.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
 }
-foreach ( $column in 0..( $gameMaster.foundationColumnCount - 1 ) ) {
-    $name = "$( $column )"
-    $tableName = "table$( $column )"
-    $colName = "col$( $column )"
+$deckGridM.Name = "AutoSize"
+$mainPanel.Controls.Add( $deckGridO ) | Out-Null
+$deckGridO.Controls.Add( $deckGridM ) | Out-Null
+
+foreach( $column in 0..( $gameMaster.layout.deckColumns - 1 )) {
+    $row = 0
     try {
-        $gameMaster.foundation.$colName | Add-Member -MemberType NoteProperty -Name $name -Value $( [System.Windows.Forms.Label]::new()) -ErrorAction Stop
+        $gameMaster.cells.deck | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{}) -ErrorAction Stop
     } catch {
-        $gameMaster.foundation.$colName.PSObject.Properties.remove( $name )
-        $gameMaster.foundation.$colName | Add-Member -MemberType NoteProperty -Name $name -Value $( [System.Windows.Forms.Label]::new())
+        $gameMaster.cells.deck.PSObject.Properties.Remove( "$( $column )_$( $row )" )
+        $gameMaster.cells.deck | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{})
     }
 
-    $gameMaster.foundation.$colName.$name.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    $gameMaster.foundation.$colName.$name.Font = [System.Drawing.Font]::new( "Verdana", 14 )
-    if (( $column -ge 1 ) -and ( $column -le 2 )) {
-        $gameMaster.foundation.$colName.$name.Size = $gameMaster.foundationSmallSize
-    } elseif ( $column -eq 4 ) {
-        $gameMaster.foundation.$colName.$name.Size = $gameMaster.foundationSmallSize
-    } else {
-        $gameMaster.foundation.$colName.$name.Size = $gameMaster.normalSize
+    try {
+        $gameMaster.grids.deck | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new()) -ErrorAction Stop
+    } catch {
+        $gameMaster.grids.deck.PSObject.Properties.Remove( $column )
+        $gameMaster.grids.deck | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new())
     }
-    $gameMaster.foundation.$colName.$name.Padding = [System.Windows.Forms.Padding]::new( 0 )
-    $gameMaster.foundation.$colName.$name.Margin = [System.Windows.Forms.Padding]::new( 0 )
-    $gameMaster.foundation.$colName.$name.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $gameMaster.foundation.$colName.$name.Name = "$( $column )_f"
-    $gameMaster.foundation.$colName.$name.Text = ""
-    $gameMaster.foundation.$colName.$name.BackgroundImage = $gameMaster.cards.blank.image
-    $gameMaster.foundation.$colName.$name.AllowDrop = $true
-    $gameMaster.foundation.$colName.$name.Add_MouseClick({ 
+    
+    $gameMaster.cells.deck."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "card" -Value ""
+    $gameMaster.cells.deck."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "label" -Value $( [System.Windows.Forms.Label]::new())
+
+    ###### Label Setup #####
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Font = [System.Drawing.Font]::new( "Verdana", 14 )
+    if (( $column -eq 1 ) -or ( $column -eq 2 )) {
+        $gameMaster.cells.deck."$( $column )_$( $row )".label.Size = $gameMaster.size.deckSmall
+    } else {
+        $gameMaster.cells.deck."$( $column )_$( $row )".label.Size = $gameMaster.size.normal
+    }
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Padding = [System.Windows.Forms.Padding]::new( 0 )
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Margin = [System.Windows.Forms.Padding]::new( 0 )
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Name = "$( $column )_$( $row )_0"
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Text = ""
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.BackgroundImage = $gameMaster.other.blank.image
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.AllowDrop = $true
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Add_MouseClick({ 
         param($sender, $event)
         if ( $event.button -eq "Left" ) {
             New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Left
@@ -1207,7 +1444,7 @@ foreach ( $column in 0..( $gameMaster.foundationColumnCount - 1 ) ) {
             New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Right
         }
     })
-    $gameMaster.foundation.$colName.$name.Add_MouseDown({ 
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Add_MouseDown({ 
         param($sender, $event)
         if ( $event.button -eq "Left" ) {
             New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Left
@@ -1215,72 +1452,159 @@ foreach ( $column in 0..( $gameMaster.foundationColumnCount - 1 ) ) {
             New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Right
         }
     })
-    $gameMaster.foundation.$colName.$name.Add_DragEnter({ 
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Add_DragEnter({ 
         param($sender, $event)
         $event.Effect = [System.Windows.Forms.DragDropEffects]::Link
     })
-    $gameMaster.foundation.$colName.$name.Add_DragDrop({ New-DragDrop -GameMaster $gameMaster -Cell $this.Name })
+    $gameMaster.cells.deck."$( $column )_$( $row )".label.Add_DragDrop({ New-DragDrop -GameMaster $gameMaster -Cell $this.Name })
 
-    $cellPosition = [System.Windows.Forms.TableLayoutPanelCellPosition]::new( $column, 0 )
-    $gameMaster.foundation.$tableName.SetCellPosition( $gameMaster.foundation.$colName.$name, $cellPosition )
-    $gameMaster.foundation.$tableName.Controls.Add( $gameMaster.foundation.$colName.$name )
+    $gameMaster.grids.deck.$column.RowCount = 1
+    $gameMaster.grids.deck.$column.ColumnCount = 1
+    $gameMaster.grids.deck.$column.CellBorderStyle = [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::Single
+    $gameMaster.grids.deck.$column.Name = "AutoSize"
+
+    $cellPosition = [System.Windows.Forms.TableLayoutPanelCellPosition]::new( $column, $row )
+    $gameMaster.grids.deck.$column.SetCellPosition( $gameMaster.cells.deck."$( $column )_$( $row )".label, $cellPosition )
+    $gameMaster.grids.deck.$column.Controls.Add( $gameMaster.cells.deck."$( $column )_$( $row )".label )
+    $deckGridM.Controls.Add( $gameMaster.grids.deck.$column ) | Out-Null
+    #####
 }
-$gridMid.Controls.Add( $gameMaster.foundation.table ) | Out-Null
-$gridMid.SetFlowBreak( $gameMaster.foundation."table$( $gameMaster.foundationColumnCount - 1 )", $true )
+#####
 
-foreach( $column in 0..( $gameMaster.tableColumnCount - 1 )) {
-    $tableName = "table$( $column )"
-    $colName = "col$( $column )"
+##### Foundation Grid/Cells #####
+$foundationGridO = [System.Windows.Forms.TableLayoutPanel]::new()
+$foundationGridO.Dock = [System.Windows.Forms.DockStyle]::Fill
+$foundationGridO.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom
+$foundationGridO.Name = "AutoSize"
+$foundationGridM = [System.Windows.Forms.FlowLayoutPanel]::new()
+if ( $gameMaster.layout.foundationHorizontal ) {
+    $foundationGridM.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+} else {
+    $foundationGridM.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+}
+$foundationGridM.Name = "AutoSize"
+$mainPanel.Controls.Add( $foundationGridO ) | Out-Null
+$foundationGridO.Controls.Add( $foundationGridM ) | Out-Null
+$mainPanel.SetFlowBreak( $foundationGridO, $true)
+
+foreach( $column in 0..( $gameMaster.layout.foundationColumns - 1 )) {
+    $row = 0
     try {
-        $gameMaster | Add-Member -MemberType NoteProperty -Name $tableName -Value $( [System.Windows.Forms.TableLayoutPanel]::new()) -ErrorAction Stop
+        $gameMaster.cells.foundation | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{}) -ErrorAction Stop
     } catch {
-        $gameMaster.PSObject.Properties.Remove( $tableName )
-        $gameMaster | Add-Member -MemberType NoteProperty -Name $tableName -Value $( [System.Windows.Forms.TableLayoutPanel]::new())
+        $gameMaster.cells.foundation.PSObject.Properties.Remove( "$( $column )_$( $row )" )
+        $gameMaster.cells.foundation | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{})
     }
 
     try {
-        $gameMaster | Add-Member -MemberType NoteProperty -Name $colName -Value $( [PSCustomObject]@{}) -ErrorAction Stop
+        $gameMaster.grids.foundation | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new()) -ErrorAction Stop
     } catch {
-        $gameMaster.PSObject.Properties.Remove( $colName )
-        $gameMaster | Add-Member -MemberType NoteProperty -Name $colName -Value $( [PSCustomObject]@{})
+        $gameMaster.grids.foundation.PSObject.Properties.Remove( $column )
+        $gameMaster.grids.foundation | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new())
+    }
+    
+    $gameMaster.cells.foundation."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "card" -Value ""
+    $gameMaster.cells.foundation."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "label" -Value $( [System.Windows.Forms.Label]::new())
+
+    ###### Label Setup #####
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Font = [System.Drawing.Font]::new( "Verdana", 14 )
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Size = $gameMaster.size.normal
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Padding = [System.Windows.Forms.Padding]::new( 0 )
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Margin = [System.Windows.Forms.Padding]::new( 0 )
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Name = "$( $column )_$( $row )_1"
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Text = ""
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.BackgroundImage = $gameMaster.other.blank.image
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.AllowDrop = $true
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Add_MouseClick({ 
+        param($sender, $event)
+        if ( $event.button -eq "Left" ) {
+            New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Left
+        } elseif ( $event.button -eq "Right" ) {
+            New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Right
+        }
+    })
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Add_MouseDown({ 
+        param($sender, $event)
+        if ( $event.button -eq "Left" ) {
+            New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Left
+        } elseif ( $event.button -eq "Right" ) {
+            New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Right
+        }
+    })
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Add_DragEnter({ 
+        param($sender, $event)
+        $event.Effect = [System.Windows.Forms.DragDropEffects]::Link
+    })
+    $gameMaster.cells.foundation."$( $column )_$( $row )".label.Add_DragDrop({ New-DragDrop -GameMaster $gameMaster -Cell $this.Name })
+
+    $gameMaster.grids.foundation.$column.RowCount = 1
+    $gameMaster.grids.foundation.$column.ColumnCount = 1
+    $gameMaster.grids.foundation.$column.CellBorderStyle = [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::Single
+    $gameMaster.grids.foundation.$column.Name = "AutoSize"
+
+    $cellPosition = [System.Windows.Forms.TableLayoutPanelCellPosition]::new( $column, $row )
+    $gameMaster.grids.foundation.$column.SetCellPosition( $gameMaster.cells.foundation."$( $column )_$( $row )".label, $cellPosition )
+    $gameMaster.grids.foundation.$column.Controls.Add( $gameMaster.cells.foundation."$( $column )_$( $row )".label )
+    $foundationGridM.Controls.Add( $gameMaster.grids.foundation.$column ) | Out-Null
+    #####
+}
+#####
+
+##### Main Grid/Cells #####
+$mainGridO = [System.Windows.Forms.TableLayoutPanel]::new()
+$mainGridO.Dock = [System.Windows.Forms.DockStyle]::Fill
+$mainGridO.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom
+$mainGridO.Name = "AutoSize"
+$mainGridM = [System.Windows.Forms.FlowLayoutPanel]::new()
+$mainGridM.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+$mainGridM.Name = "AutoSize"
+$mainPanel.Controls.Add( $mainGridO ) | Out-Null
+$mainGridO.Controls.Add( $mainGridM ) | Out-Null
+
+
+foreach( $column in 0..( $gameMaster.layout.mainColumns - 1 )) {
+
+    try {
+        $gameMaster.grids.main | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new()) -ErrorAction Stop
+    } catch {
+        $gameMaster.grids.main.PSObject.Properties.Remove( $column )
+        $gameMaster.grids.main | Add-Member -MemberType NoteProperty -Name $column -Value $( [System.Windows.Forms.TableLayoutPanel]::new())
     }
 
-    $gameMaster.$tableName.RowCount = $tableRowCount
-    $gameMaster.$tableName.ColumnCount = 1
-    $gameMaster.$tableName.CellBorderStyle = [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::Single
-    $gameMaster.$tableName.Name = "AutoSize"
-    $gridMid.Controls.Add( $gameMaster.$tableName ) | Out-Null
-}
-$gridOuter.Controls.Add( $gridMid ) | Out-Null
-$mainPanel.Controls.Add( $gridOuter ) | Out-Null
+    $gameMaster.grids.main.$column.RowCount = $gameMaster.layout.mainRows
+    $gameMaster.grids.main.$column.ColumnCount = 1
+    $gameMaster.grids.main.$column.CellBorderStyle = [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::Single
+    $gameMaster.grids.main.$column.Name = "AutoSize"
 
-foreach ( $row in 0..( $gameMaster.tableRowCount - 1 )) {
-    foreach ( $column in 0..6 ) {
-        $name = "$( $row )"
-        $tableName = "table$( $column )"
-        $colName = "col$( $column )"
+    $mainGridM.Controls.Add( $gameMaster.grids.main.$column ) | Out-Null
+
+    foreach( $row in 0..( $gameMaster.layout.mainRows - 1 )) {
         try {
-            $gameMaster.$colName | Add-Member -MemberType NoteProperty -Name $name -Value $( [System.Windows.Forms.Label]::new()) -ErrorAction Stop
+            $gameMaster.cells.main | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{}) -ErrorAction Stop
         } catch {
-            $gameMaster.$colName.PSObject.Properties.remove( $name )
-            $gameMaster.$colName | Add-Member -MemberType NoteProperty -Name $name -Value $( [System.Windows.Forms.Label]::new())
+            $gameMaster.cells.main.PSObject.Properties.Remove( "$( $column )_$( $row )" )
+            $gameMaster.cells.main | Add-Member -MemberType NoteProperty -Name "$( $column )_$( $row )" -Value $( [PSCustomObject]@{})
         }
 
-        $gameMaster.$colName.$name.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-        $gameMaster.$colName.$name.Font = [System.Drawing.Font]::new( "Verdana", 14 )
-        if ( $row -eq 0 ) {
-            $gameMaster.$colName.$name.Size = $gameMaster.normalSize
-        } else {
-            $gameMaster.$colName.$name.Size = $gameMaster.smallSize
-        }
-        $gameMaster.$colName.$name.Padding = [System.Windows.Forms.Padding]::new( 0 )
-        $gameMaster.$colName.$name.Margin = [System.Windows.Forms.Padding]::new( 0 )
-        $gameMaster.$colName.$name.Dock = [System.Windows.Forms.DockStyle]::Fill
-        $gameMaster.$colName.$name.Name = "$( $column )_$( $row )"
-        $gameMaster.$colName.$name.Text = ""
-        $gameMaster.$colName.$name.BackgroundImage = $gameMaster.cards.blank.image
-        $gameMaster.$colName.$name.AllowDrop = $true
-        $gameMaster.$colName.$name.Add_MouseClick({ 
+        $gameMaster.cells.main."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "card" -Value ""
+        $gameMaster.cells.main."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "label" -Value $( [System.Windows.Forms.Label]::new())
+        $gameMaster.cells.main."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "column" -Value $column
+        $gameMaster.cells.main."$( $column )_$( $row )" | Add-Member -MemberType NoteProperty -Name "row" -Value $row
+
+        ###### Label Setup #####
+        $gameMaster.cells.main."$( $column )_$( $row )".label.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Font = [System.Drawing.Font]::new( "Verdana", 14 )
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Size = $gameMaster.size.small
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Padding = [System.Windows.Forms.Padding]::new( 0 )
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Margin = [System.Windows.Forms.Padding]::new( 0 )
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Name = "$( $column )_$( $row )_2"
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Text = ""
+        $gameMaster.cells.main."$( $column )_$( $row )".label.BackgroundImage = $gameMaster.other.blank.image
+        $gameMaster.cells.main."$( $column )_$( $row )".label.AllowDrop = $true
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Add_MouseClick({ 
             param($sender, $event)
             if ( $event.button -eq "Left" ) {
                 New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Left
@@ -1288,7 +1612,7 @@ foreach ( $row in 0..( $gameMaster.tableRowCount - 1 )) {
                 New-MouseClick -GameMaster $gameMaster -Cell $this.Name -Right
             }
         })
-        $gameMaster.$colName.$name.Add_MouseDown({ 
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Add_MouseDown({ 
             param($sender, $event)
             if ( $event.button -eq "Left" ) {
                 New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Left
@@ -1296,17 +1620,20 @@ foreach ( $row in 0..( $gameMaster.tableRowCount - 1 )) {
                 New-MouseDown -GameMaster $gameMaster -Cell $this.Name -Right
             }
         })
-        $gameMaster.$colName.$name.Add_DragEnter({ 
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Add_DragEnter({ 
             param($sender, $event)
             $event.Effect = [System.Windows.Forms.DragDropEffects]::Link
         })
-        $gameMaster.$colName.$name.Add_DragDrop({ New-DragDrop -GameMaster $gameMaster -Cell $this.Name })
+        $gameMaster.cells.main."$( $column )_$( $row )".label.Add_DragDrop({ New-DragDrop -GameMaster $gameMaster -Cell $this.Name })
 
         $cellPosition = [System.Windows.Forms.TableLayoutPanelCellPosition]::new( $column, $row )
-        $gameMaster.$tableName.SetCellPosition( $gameMaster.$colName.$name, $cellPosition )
-        $gameMaster.$tableName.Controls.Add( $gameMaster.$colName.$name )
+        $gameMaster.grids.main.$column.SetCellPosition( $gameMaster.cells.main."$( $column )_$( $row )".label, $cellPosition )
+        $gameMaster.grids.main.$column.Controls.Add( $gameMaster.cells.main."$( $column )_$( $row )".label )
+
+        #####
     }
 }
+#####
 
 Set-AutoSize -Control $gameMaster.form
 
